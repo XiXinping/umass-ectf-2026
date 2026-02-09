@@ -67,7 +67,6 @@ extern "C" {
  *  MSP DL.
  */
 
-
 /* clang-format off */
 
 #define POWER_STARTUP_DELAY                                                (16)
@@ -127,7 +126,6 @@ extern "C" {
 #define BUTTONS_S2_PIN                                          (DL_GPIO_PIN_21)
 #define BUTTONS_S2_IOMUX                                         (IOMUX_PINCM63)
 
-
 /* clang-format on */
 
 void SYSCFG_DL_init(void);
@@ -136,8 +134,7 @@ void SYSCFG_DL_GPIO_init(void);
 void SYSCFG_DL_SYSCTL_init(void);
 void SYSCFG_DL_UART_0_init(void);
 void SYSCFG_DL_UART_1_init(void);
-
-
+void SYSCFG_DL_TRNG_init(void);
 
 #ifdef __cplusplus
 }

@@ -4,22 +4,51 @@
  * @brief Simplified Crypto API Implementation
  * @date 2026
  *
- * This source file is part of an example system for MITRE's 2026 Embedded CTF (eCTF).
- * This code is being provided only for educational purposes for the 2026 MITRE eCTF competition,
- * and may not meet MITRE standards for quality. Use this code at your own risk!
+ * This source file is part of an example system for MITRE's 2026 Embedded CTF
+ * (eCTF). This code is being provided only for educational purposes for the
+ * 2026 MITRE eCTF competition, and may not meet MITRE standards for quality.
+ * Use this code at your own risk!
  *
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
 
-#if CRYPTO_EXAMPLE
+// #if CRYPTO_EXAMPLE
 
 #include "simple_crypto.h"
 #include "security.h"
 #include <stdint.h>
 #include <string.h>
 
+/******************************** FUNCTION PROTOTYPES
+ * ********************************/
+/** @brief Generate random bytes using the MSPM0's TRNG.
+ *
+ * @param out A pointer to a buffer of length num_bytes where the random bytes
+ *          will be written
+ * @param num_bytes The number of bytes to generate
+ *
+ * @return 0 on success, -1 on bad length, other non-zero for other error
+ */
 
-/******************************** FUNCTION PROTOTYPES ********************************/
+int get_true_random_bytes(uint8_t *out, size_t num_bytes) {
+    for (size_t i = 0; i < num_bytes; i++) {
+        DL_TRNG_sendCommand(TRNG, DL_TRNG_CMD_NORM_FUNC);
+        while (!DL_TRNG_isCaptureReady(TRNG))
+            ;
+        out[i] = DL_TRNG_getCapture(TRNG);
+    }
+
+    return 0;
+}
+
+WC_RNG *new_rng() {
+    uint8_t seed[SEED_SIZE];
+    get_true_random_bytes(seed, SEED_SIZE);
+    return wc_rng_new(*seed, SEED_SIZE, NULL);
+}
+
+/******************************** FUNCTION PROTOTYPES
+ * ********************************/
 /** @brief Encrypts plaintext using a symmetric cipher
  *
  * @param plaintext A pointer to a buffer of length len containing the
@@ -33,8 +62,9 @@
  *
  * @return 0 on success, -1 on bad length, other non-zero for other error
  */
-int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *key, uint8_t *ciphertext) {
-    Aes ctx; // Context for encryption
+int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *key,
+                uint8_t *ciphertext) {
+    Aes ctx;    // Context for encryption
     int result; // Library result
 
     // Ensure valid length
@@ -45,7 +75,6 @@ int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *key, uint8_t *ciphertex
     result = wc_AesSetKey(&ctx, key, 16, NULL, AES_ENCRYPTION);
     if (result != 0)
         return result; // Report error
-
 
     // Encrypt each block
     for (int i = 0; i < len; i += BLOCK_SIZE) {
@@ -69,8 +98,9 @@ int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *key, uint8_t *ciphertex
  *
  * @return 0 on success, -1 on bad length, other non-zero for other error
  */
-int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintext) {
-    Aes ctx; // Context for decryption
+int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key,
+                uint8_t *plaintext) {
+    Aes ctx;    // Context for decryption
     int result; // Library result
 
     // Ensure valid length
@@ -96,8 +126,8 @@ int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintex
  * @param data A pointer to a buffer of length len containing the data
  *          to be hashed
  * @param len The length of the plaintext to hash
- * @param hash_out A pointer to a buffer of length HASH_SIZE (16 bytes) where the resulting
- *          hash output will be written to
+ * @param hash_out A pointer to a buffer of length HASH_SIZE (16 bytes) where
+ * the resulting hash output will be written to
  *
  * @return 0 on success, non-zero for other error
  */
@@ -106,4 +136,4 @@ int hash(void *data, size_t len, uint8_t *hash_out) {
     return wc_Md5Hash((uint8_t *)data, len, hash_out);
 }
 
-#endif
+// #endif
