@@ -4,9 +4,10 @@
  * @brief eCTF flash-based filesystem management
  * @date 2026
  *
- * This source file is part of an example system for MITRE's 2026 Embedded CTF (eCTF).
- * This code is being provided only for educational purposes for the 2026 MITRE eCTF competition,
- * and may not meet MITRE standards for quality. Use this code at your own risk!
+ * This source file is part of an example system for MITRE's 2026 Embedded CTF
+ * (eCTF). This code is being provided only for educational purposes for the
+ * 2026 MITRE eCTF competition, and may not meet MITRE standards for quality.
+ * Use this code at your own risk!
  *
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
@@ -17,20 +18,22 @@
 #include "simple_flash.h"
 
 int load_fat() {
-    flash_simple_read((uint32_t)_FLASH_FAT_START, FILE_ALLOCATION_TABLE, sizeof(FILE_ALLOCATION_TABLE));
+    flash_simple_read((uint32_t)_FLASH_FAT_START, FILE_ALLOCATION_TABLE,
+                      sizeof(FILE_ALLOCATION_TABLE));
     return 0;
 }
 
 int store_fat() {
     flash_simple_erase_page(_FLASH_FAT_START);
-    return flash_simple_write((uint32_t)_FLASH_FAT_START, FILE_ALLOCATION_TABLE, sizeof(FILE_ALLOCATION_TABLE));
+    return flash_simple_write((uint32_t)_FLASH_FAT_START, FILE_ALLOCATION_TABLE,
+                              sizeof(FILE_ALLOCATION_TABLE));
 }
 
 /** @brief Initialize the filesystem
  *
  *
  * @return 0 upon success. A negative value on error.
-*/
+ */
 int init_fs() {
     return load_fat();
 }
@@ -40,7 +43,7 @@ int init_fs() {
  *  @param slot The slot to check
  *
  * @return True if the slot is in use. False otherwise.
-*/
+ */
 bool is_slot_in_use(slot_t slot) {
     file_t temp_file;
     return (!read_file(slot, &temp_file) && temp_file.in_use == FILE_IN_USE);
@@ -51,14 +54,9 @@ bool is_slot_in_use(slot_t slot) {
  *  @param slot The slot to check
  *
  * @return 0 upon success. A negative value otherwise.
-*/
-int create_file(
-    file_t *dest,
-    group_id_t group_id,
-    char *name,
-    uint16_t contents_len,
-    uint8_t *contents
-) {
+ */
+int create_file(file_t *dest, group_id_t group_id, char *name,
+                uint16_t contents_len, uint8_t *contents) {
     memset(dest, 0, sizeof(file_t));
 
     dest->in_use = FILE_IN_USE;
@@ -79,7 +77,7 @@ int create_file(
  *  @param uuid The UUID to store in the FAT
  *
  * @return 0 upon success. A negative value otherwise.
-*/
+ */
 int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
     unsigned int length, flash_addr;
 
@@ -97,7 +95,8 @@ int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
     }
 
     // now write the file
-    return flash_simple_write(FILE_ALLOCATION_TABLE[slot].flash_addr, src, length);
+    return flash_simple_write(FILE_ALLOCATION_TABLE[slot].flash_addr, src,
+                              length);
 }
 
 /** @brief Read a file from persistent storage into memory
@@ -106,7 +105,7 @@ int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
  *  @param dest The destination address to store the file
  *
  * @return 0 upon success. A negative value otherwise.
-*/
+ */
 int read_file(slot_t slot, file_t *dest) {
     int flash_addr, file_size;
 
@@ -125,7 +124,7 @@ int read_file(slot_t slot, file_t *dest) {
  *  @param slot The slot to get metadata for
  *
  * @return A filesystem_entry_t * on success. NULL on error.
-*/
+ */
 const filesystem_entry_t *get_file_metadata(slot_t slot) {
     return &FILE_ALLOCATION_TABLE[slot];
 }
