@@ -10,3 +10,11 @@
  Iterate through buffer and input into AES-GCM and perform uart transfer (write byte function)
  Zero out buffer once completed
 */
+
+/**  
+ ASSUMPTION: File is in transsit
+ Zero out buffer 
+ Accept each byte from uart into buffer
+ Iterate through buffer and input into AES-GCM  and store the encrypted data into slot pages
+ Zero out buffer once completed
+*/
