@@ -38,6 +38,7 @@
 #define SECRET_MSG __attribute__((section(".secret"))) __attribute__((used))
 #define AES_TRANSACTION_LENGTH (15)
 #define AAD_LENGTH (5)
+#define TOTAL_BUFFER_SIZE 8192
 
 SECRET_MSG const uint32_t  __attribute__((aligned(4))) gKey[] = {0x92e9fffe , 0x1c736586 , 0x948f6a6d, 0x08833067};
 
