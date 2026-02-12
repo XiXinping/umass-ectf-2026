@@ -13,8 +13,20 @@ Copyright: Copyright (c) 2026 The MITRE Corporation
 import argparse
 import json
 from pathlib import Path
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
 from loguru import logger
+
+
+# Generates a public and private key pair using Curve25519. The resulting keys are
+# stored as a bytes object.
+def gen_ecc_key_pair() -> dict[str, bytes]:
+    private_key = X25519PrivateKey.generate()
+    public_key = private_key.public_key()
+    return {
+        "private": private_key.private_bytes(),
+        "public": public_key.public_bytes_raw(),
+    }
 
 
 def gen_secrets(groups: list[int]) -> bytes:
@@ -32,16 +44,19 @@ def gen_secrets(groups: list[int]) -> bytes:
 
     :returns: Contents of the secrets file
     """
-    # TODO: Update this function to generate any system-wide secrets needed by
-    #   your design
+
+    ecc_key_pairs: dict[int, dict[str, bytes]] = {}
+    for group_id in groups:
+        key_pair = gen_ecc_key_pair()
+        ecc_key_pairs[group_id] = {
+            "public": key_pair["public"],
+            "private": key_pair["private"],
+        }
 
     # Create the secrets object
     # You can change this to generate any secret material
     # The secrets file will never be shared with attackers
-    secrets = {
-        "groups": groups,
-        "some_secrets": "EXAMPLE",
-    }
+    secrets = {"groups": groups, "ecc_key_pairs": ecc_key_pairs}
 
     # NOTE: if you choose to use JSON for your file type, you will not
     # be able to store binary data, and must either use a different file
@@ -51,8 +66,7 @@ def gen_secrets(groups: list[int]) -> bytes:
 
 
 def parse_args():
-    """Define and parse the command line arguments
-    """
+    """Define and parse the command line arguments"""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--force",
