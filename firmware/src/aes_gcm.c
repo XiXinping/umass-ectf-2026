@@ -1,335 +1,135 @@
-/*
- * Copyright (c) 2021, Texas Instruments Incorporated
- * All rights reserved.
+/* aesgcm-oneshot.c
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
+ * Copyright (C) 2006-2024 wolfSSL Inc.
  *
- * *  Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
+ * This file is part of wolfSSL.
  *
- * *  Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
+ * wolfSSL is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- * *  Neither the name of Texas Instruments Incorporated nor the names of
- *    its contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
+ * wolfSSL is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
  */
 
 
-#include "ti_msp_dl_config.h"
-#include "customer_secure_config.h"
+#include <wolfssl/options.h>
+#include <wolfssl/wolfcrypt/settings.h>
+#include <wolfssl/wolfcrypt/error-crypt.h>
+#include <wolfssl/wolfcrypt/logging.h>
+#include <wolfssl/wolfcrypt/aes.h>
+#include "simple_flash.h"
 
-/* initializes memory in a dedicated region that will be read-execute protected */
-#define SECRET_MSG __attribute__((section(".secret"))) __attribute__((used))
-#define AES_TRANSACTION_LENGTH (15)
-#define AAD_LENGTH (5)
-#define TOTAL_BUFFER_SIZE 8192
+// TODO: Buffer memsets to 0 after use
 
-SECRET_MSG const uint32_t  __attribute__((aligned(4))) gKey[] = {0x92e9fffe , 0x1c736586 , 0x948f6a6d, 0x08833067};
+int aesgcm_enc(uint8_t* input, uint8_t* aad)
+{
+    Aes           aesEnc;
+    //Aes           aesDec;
+    unsigned char key[AES_256_KEY_SIZE];
+    int           ret = 0;
+    uint8_t enc[sizeof(input)];
+    // unsigned char dec[33];
+    unsigned char iv[GCM_NONCE_MID_SZ];
+    unsigned char authTag[AES_BLOCK_SIZE];
+    size_t        i;
 
-static uint32_t gHkey[4] = {0x37533bb8 , 0x5d53bf08 , 0x29e5a60a , 0x783bd580};
-
-static uint32_t gAesInput[AES_TRANSACTION_LENGTH] = {0x253231d9 ,0xe50684f8 ,0xc50959a5 ,0x9a26f5af, 0x53a9a786 , 0xdaf73415 , 0x3d304c2e , 0x728a318a , 0x950c3c1c ,0x53096895 ,0x240ecf2f ,0x25b5a649 ,0xf5ed6ab1 ,0x57e60daa ,0x397b63ba};
-
-static uint32_t gAesAadInput[AAD_LENGTH] = {0xcefaedfe , 0xefbeadde , 0xcefaedfe , 0xefbeadde , 0xd2daadab} ; // 
-
-static uint32_t gAesTag[4]; // Integrity tag
-
-/* size is taken as 16 because output is generated as 128 block cipher text in each operation */
-static uint32_t gAesEncryptedOutput[16];
-
-static uint32_t gExpectedCiphertext[AES_TRANSACTION_LENGTH] = {0xC21E8342 ,0x24747721   , 0xB721724B ,   0x9CD4D084 ,  0x2F21AAE3 ,0xE0A4022C ,  0x237EC135  ,0x2EA1AC29  ,0xB214D521 ,0x1C936654
-                                       ,0x5A6A8F7D  ,0x05AA84AC  ,0x390BA31B  ,0x97AC0A6A  ,0x91E0583D};
-
-static uint32_t gAesDecryptedOutput[AES_TRANSACTION_LENGTH];
-
-static uint32_t gAesIv[4] = {0xbebafeca,0xaddbcefa,0x88f8cade,0x01000000}; // Replace with TRNG seeded PRNG call
+    memset(key, 0, sizeof(key)); // TODO: Generate key with PRNG seeded with TRNG
+    memset(iv, 0, sizeof(iv)); // TODO: Generate IV with PRNG seeded with TRNG
+    memset(enc, 0, sizeof(enc)); 
+    memset(authTag, 0, sizeof(authTag)); 
 
 
-volatile uint32_t input_idx = 0;
-volatile uint32_t output_idx = 0;
-volatile uint32_t operation_in_progress = false;
-
-/* check for whether to load aad or input text for encryption */
-volatile uint32_t aad_flag = 0;
-volatile bool gCorrectResult = true;
-
-static DL_AESADV_Config gAESADV_config = {
-    .mode = DL_AESADV_MODE_GCM_LOAD_HASH_KEY,
-    .direction = DL_AESADV_DIR_ENCRYPT,
-    .ctr_ctrWidth = DL_AESADV_CTR_WIDTH_32_BIT,
-    .cfb_fbWidth = DL_AESADV_FB_WIDTH_128,
-    .ccm_ctrWidth = DL_AESADV_CCM_CTR_WIDTH_2_BYTES,
-    .ccm_tagWidth = DL_AESADV_CCM_TAG_WIDTH_1_BYTE,
-    .iv = (uint8_t *)&gAesIv[0],
-    .nonce = NULL,
-    .lowerCryptoLength = 60,
-    .upperCryptoLength = 0,
-    .aadLength = 20,
-};
-
-/* configuration for writing key in keystore */
-static DL_KEYSTORECTL_KeyWrConfig gKeyWriteConfig ={
-     .keySlot = DL_KEYSTORECTL_KEY_SLOT_0,
-     .keySize = DL_KEYSTORECTL_KEY_SIZE_128_BITS,
-     .key = (uint32_t *)&gKey[0],
-};
-
-/* configuration for loading key in AES engine */
-static DL_KEYSTORECTL_Config gKeyTransferConfig ={
-     .keySlot = DL_KEYSTORECTL_KEY_SLOT_0,
-     .keySize = DL_KEYSTORECTL_KEY_SIZE_128_BITS,
-     .cryptoSel = DL_KEYSTORECTL_CRYPTO_SEL_AES,
-};
-
-int aes_app(void);
-
-int main(void){
-
-    /* Power on GPIO, initialize pins as digital outputs */
-    SYSCFG_DL_init();
-
-    /* if initdone is not issued load keys to keystore and issue intidone */
-    if(!DL_SYSCTL_isINITDONEIssued())
-    {
-        /*
-         * Device in privileged mode, INITDONE has not been issued
-         * Customer secure code keys/policies should be configured here
-         * then INITDONE will be issued
-         */
-        DL_KEYSTORECTL_setNumberOf256Keys(KEYSTORECTL, DL_KEYSTORECTL_NUM_256_KEYS_ZERO);
-        DL_KEYSTORECTL_writeKey(KEYSTORECTL, (DL_KEYSTORECTL_KeyWrConfig*) &gKeyWriteConfig);
-
-        /* Read/Execute protect key stored in Keystore */
-        DL_SYSCTL_setReadExecuteProtectFirewallAddrStart(CSC_SECRET_ADDR);
-        DL_SYSCTL_setReadExecuteProtectFirewallAddrEnd(CSC_SECRET_END);
-        DL_SYSCTL_enableReadExecuteProtectFirewall();
-
-        /* End of Customer Secure Code */
-        DL_SYSCTL_issueINITDONE();
+    fprintf(stderr, "Encrypt with AES128-GCM\n");
+    /* Initialize AES encryption object. */
+    ret = wc_AesInit(&aesEnc, NULL, INVALID_DEVID);
+    if (ret == 0) {
+        /* Set GCM key into AES encryption object. */
+        ret = wc_AesGcmSetKey(&aesEnc, key, AES_128_KEY_SIZE);
+        if (ret != 0)
+            fprintf(stderr, "Set Key failed: %d\n", ret);
+    }
+    if (ret == 0) {
+        /* Encrypt data with AES encryption object and get ciphertext and
+         * authentication tag. No additional authentication data. */
+        ret = wc_AesGcmEncrypt(&aesEnc, input, input, sizeof(input), iv, sizeof(iv),
+                               authTag, sizeof(authTag), aad, 0);
+        if (ret != 0)
+            fprintf(stderr, "Encrypt failed: %d\n", ret);
+    }
+    if (ret == 0) {
+        printf("Ciphertext: ");
+        for (i = 0; i < sizeof(input); i++)
+            printf("%02x", enc[i]);
+        printf("\n");
+        printf("  Auth Tag: ");
+        for (i = 0; i < sizeof(authTag); i++)
+            printf("%02x", authTag[i]);
+        printf("\n");
     }
 
-    /* Enables a AES_ADV interrupt in the NVIC interrupt controller */
-    NVIC_EnableIRQ(AESADV_INT_IRQn);
-    DL_SYSCTL_disableSleepOnExit();
+    key = flash_simple_write(0, key, sizeof(key));
+    iv = flash_simple_write(1, iv, sizeof(iv));
+    authTag = flash_simple_write(2, authTag, sizeof(authTag));
 
-    /* branch to gcm aes encryption application */
-    aes_app();
-
-    return 0;
+    return ret;
 }
 
-int aes_app(void)
+int aesgcm_dec(uint8_t* ciphertext, uint8_t* aad)
 {
+    Aes           aesDec;
+    unsigned char key[AES_256_KEY_SIZE];
+    int           ret = 0;
+    uint8_t dec[sizeof(ciphertext)];
+    unsigned char iv[GCM_NONCE_MID_SZ]; 
+    unsigned char authTag[AES_BLOCK_SIZE]; 
+    size_t        i;
 
-    /*
-     * Set the key size and Load the key to the AES engine. This must be done prior to setting up
-     * the AES engine for GCM encryption with SYSCFG_DL_AESADV_init()
-     */
-    DL_AESADV_setKeySize(AESADV, DL_AESADV_KEY_SIZE_128_BIT);
+    memset(key, 0, sizeof(key)); 
+    memset(iv, 0, sizeof(iv)); 
+    memset(authTag, 0, sizeof(authTag)); 
+    memset(dec, 0, sizeof(dec)); 
 
 
-    DL_KEYSTORECTL_transferKey(KEYSTORECTL, (DL_KEYSTORECTL_Config*) &gKeyTransferConfig);
+    key = flash_simple_read(0, key, sizeof(key));
+    iv = flash_simple_read(1, iv, sizeof(iv));
+    authTag = flash_simple_read(2, authTag, sizeof(authTag));
 
-    /* load Hash-key to G-hash register */
-    DL_AESADV_setGCMHashKeyAligned(AESADV, &gHkey[0]);
-
-    /* Write the rest of the AES context */
-    DL_AESADV_initGCM(AESADV, (DL_AESADV_Config *) &gAESADV_config);
-
-    /* loading aad to aes */
-    aad_flag = 1;
-
-    /* clear the pending input ready interrupt and enable the input ready interrupt */
-    DL_AESADV_clearInterruptStatus(AESADV, DL_AESADV_INTERRUPT_INPUT_READY);
-    DL_AESADV_enableInterrupt(AESADV, DL_AESADV_INTERRUPT_INPUT_READY);
-
-    /* wait for input register to be ready to filled up with aad input data */
-    while(input_idx < 8){
-        __WFE();
+    if (ret == 0) {
+        fprintf(stderr, "Decrypt with AES128-GCM\n");
+        /* Initialize AES decryption object. */
+        ret = wc_AesInit(&aesDec, NULL, INVALID_DEVID);
     }
-
-    /*set all index again to 0 for encryption */
-    input_idx = 0;
-    output_idx = 0;
-    aad_flag =0;
-
-    /* operation in progress signifies AES engine is encrypting/decrypting */
-    operation_in_progress = true;
-
-    /* enabling all 3 interrupts, INPUT_READY, OUTPUT_READY, and SAVED_OUTPUT_CONTEXT_READY */
-    DL_AESADV_clearInterruptStatus(AESADV,DL_AESADV_INTERRUPT_OUTPUT_READY);
-    DL_AESADV_enableInterrupt(AESADV,DL_AESADV_INTERRUPT_OUTPUT_READY);
-    DL_AESADV_clearInterruptStatus(AESADV, DL_AESADV_INTERRUPT_INPUT_READY);
-    DL_AESADV_enableInterrupt(AESADV, DL_AESADV_INTERRUPT_INPUT_READY);
-    DL_AESADV_clearInterruptStatus(AESADV,DL_AESADV_INTERRUPT_SAVED_OUTPUT_CONTEXT_READY);
-    DL_AESADV_enableInterrupt(AESADV,DL_AESADV_INTERRUPT_SAVED_OUTPUT_CONTEXT_READY);
-
-
-    /* wait till encryption gets complete */
-    while(operation_in_progress){
-        __WFE();
+    if (ret == 0) {
+        /* Set GCM key into AES decryption object. */
+        ret = wc_AesGcmSetKey(&aesDec, key, AES_128_KEY_SIZE);
+        if (ret != 0)
+            fprintf(stderr, "Set Key failed: %d\n", ret);
+    }
+    if (ret == 0) {
+        /* Check authentication tag with ciphertext and decrypt ciphertext with
+         * AES decryption object and get decrypted data. No additional
+         * authentication data. */
+        ret = wc_AesGcmDecrypt(&aesDec, dec, ciphertext, sizeof(ciphertext), iv, sizeof(iv),
+                               authTag, sizeof(authTag), aad, 0);
+        if (ret == AES_GCM_AUTH_E)
+            fprintf(stderr, "Authentication failed: %d\n", ret);
+        else if (ret != 0)
+            fprintf(stderr, "Decrypt failed: %d\n", ret);
+    }
+    if (ret == 0) {
+        printf(" Decrypted: ");
+        for (i = 0; i < sizeof(ciphertext); i++)
+            printf("%02x", dec[i]);
+        printf("\n");
     }
 
 
-    /* Compare encrypted text to expected cipher text */
-    for (int i = 0; i < AES_TRANSACTION_LENGTH; i++) {
-        if (gAesEncryptedOutput[i] != gExpectedCiphertext[i]) {
-            gCorrectResult = false;
-        }
-    }
-
-    /*
-    * Stop the debugger to examine the output. At this point,
-    * gCorrectResults should be equal to "true" and gAesEncryptOutput
-    * should be equal to gAesExpectedCiphertext.
-    */
-    __BKPT(0);
-
-
-    /*set all index again to 0 for encryption */
-    input_idx = 0;
-    output_idx = 0;
-
-    /* change the configuration direction decyrption */
-    gAESADV_config.direction = DL_AESADV_DIR_DECRYPT;
-
-
-    /* Re-Write the AES context to signify a new operation */
-    DL_AESADV_initGCM(AESADV, (DL_AESADV_Config *) &gAESADV_config);
-
-
-    /* loading aad to aes */
-    aad_flag = 1;
-
-    /* clear the pending input ready interrupt and enable the input ready interrupt */
-    DL_AESADV_clearInterruptStatus(AESADV, DL_AESADV_INTERRUPT_INPUT_READY);
-    DL_AESADV_enableInterrupt(AESADV, DL_AESADV_INTERRUPT_INPUT_READY);
-
-    /* wait for input register to be ready to filled up with aad data */
-    while(input_idx < 8){
-        __WFE();
-    }
-
-    input_idx = 0;
-    output_idx = 0;
-    aad_flag =0;
-
-    /* operation in progress signifies AES engine is encrypting/decrypting */
-    operation_in_progress = true;
-
-    /* enabling all 3 interrupts, INPUT_READY, OUTPUT_READY, and SAVED_OUTPUT_CONTEXT_READY */
-    DL_AESADV_clearInterruptStatus(AESADV,DL_AESADV_INTERRUPT_OUTPUT_READY);
-    DL_AESADV_enableInterrupt(AESADV,DL_AESADV_INTERRUPT_OUTPUT_READY);
-    DL_AESADV_clearInterruptStatus(AESADV, DL_AESADV_INTERRUPT_INPUT_READY);
-    DL_AESADV_enableInterrupt(AESADV, DL_AESADV_INTERRUPT_INPUT_READY);
-    DL_AESADV_clearInterruptStatus(AESADV,DL_AESADV_INTERRUPT_SAVED_OUTPUT_CONTEXT_READY);
-    DL_AESADV_enableInterrupt(AESADV,DL_AESADV_INTERRUPT_SAVED_OUTPUT_CONTEXT_READY);
-
-    /* wait till decryption gets complete */
-    while(operation_in_progress){
-        __WFE();
-    }
-
-    /* Compare decrypted text to input data */
-    for (int i = 0; i < AES_TRANSACTION_LENGTH; i++) {
-        if (gAesDecryptedOutput[i] != gAesInput[i]) {
-            gCorrectResult = false;
-        }
-    }
-
-    /*
-    * Stop the debugger to examine the output. At this point,
-    * gCorrectResults should be equal to "true" and gAesDecryptOutput
-    * should be equal to gAesInput.
-    */
-    __BKPT(0);
-
-
-    return 0;
-
-
-}
-
-
-void AESADV_IRQHandler(void)
-{
-    switch(DL_AESADV_getPendingInterrupt(AESADV)){
-        case DL_AESADV_IIDX_INPUT_READY:
-            if(aad_flag == 1){
-                /* load aad (additional authentication data) into engine */
-                DL_AESADV_loadInputDataAligned(AESADV, &gAesAadInput[input_idx]);
-                input_idx = input_idx + 4;
-                if(input_idx >= AAD_LENGTH){
-                    DL_AESADV_disableInterrupt(AESADV, DL_AESADV_INTERRUPT_INPUT_READY);
-                }
-            }
-            else if(gAESADV_config.direction == DL_AESADV_DIR_ENCRYPT){
-                /* Load plaintext into engine */
-                DL_AESADV_loadInputDataAligned(AESADV, &gAesInput[input_idx]);
-                /* increment input index for next block of input */
-                input_idx = input_idx + 4;
-                if(input_idx >= AES_TRANSACTION_LENGTH){
-                    DL_AESADV_disableInterrupt(AESADV, DL_AESADV_INTERRUPT_INPUT_READY);
-                }
-            }
-            else{
-                /* Load ciphertext into engine */
-                DL_AESADV_loadInputDataAligned(AESADV, &gAesEncryptedOutput[input_idx]);
-                /* increment input index for next block of input */
-                input_idx = input_idx + 4;
-                if(input_idx >= AES_TRANSACTION_LENGTH){
-                    DL_AESADV_disableInterrupt(AESADV, DL_AESADV_INTERRUPT_INPUT_READY);
-                }
-            }
-            break;
-
-        case DL_AESADV_IIDX_OUTPUT_READY:
-            if(gAESADV_config.direction == DL_AESADV_DIR_ENCRYPT){
-                /* Get encrypted result */
-                DL_AESADV_readOutputDataAligned(AESADV, &gAesEncryptedOutput[output_idx]);
-                /* increment output index for next block of output */
-                output_idx = output_idx + 4;
-                DL_AESADV_clearInterruptStatus(AESADV, DL_AESADV_INTERRUPT_OUTPUT_READY);
-                if(output_idx >= AES_TRANSACTION_LENGTH){
-                    DL_AESADV_disableInterrupt(AESADV, DL_AESADV_INTERRUPT_OUTPUT_READY);
-                }
-
-            }
-            else{
-                /* Get decrypted result */
-                DL_AESADV_readOutputDataAligned(AESADV, &gAesDecryptedOutput[output_idx]);
-                /* increment output index for next block of output */
-                output_idx = output_idx + 4;
-                DL_AESADV_clearInterruptStatus(AESADV, DL_AESADV_INTERRUPT_OUTPUT_READY);
-                if(output_idx >= AES_TRANSACTION_LENGTH){
-                    DL_AESADV_disableInterrupt(AESADV, DL_AESADV_INTERRUPT_OUTPUT_READY);
-                }
-            }
-            break;
-
-        case DL_AESADV_IIDX_SAVED_OUTPUT_CONTEXT_READY:
-            /* read output tag */
-            DL_AESADV_readTAGAligned(AESADV, gAesTag);
-            DL_AESADV_disableInterrupt(AESADV,DL_AESADV_INTERRUPT_SAVED_OUTPUT_CONTEXT_READY);
-            /* change the operation state to false */
-            operation_in_progress = false;
-        default :
-            break;
-    }
 }

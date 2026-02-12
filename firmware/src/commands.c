@@ -150,6 +150,9 @@ int write(uint16_t pkt_len, uint8_t *buf) {
         command->contents
     );
 
+    uint8_t* aes_buffer = buffer_store_newfile_contents(&curr_file, command->uuid);
+
+
     // Store the file persistently
     if (write_file(command->slot, &curr_file, command->uuid) < 0) {
         print_error("Error storing file");
