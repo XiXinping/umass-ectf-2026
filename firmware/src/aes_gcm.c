@@ -35,17 +35,17 @@ int aesgcm_enc(uint8_t* input, uint8_t* aad)
     //Aes           aesDec;
     unsigned char key[AES_256_KEY_SIZE];
     int           ret = 0;
-    uint8_t enc[sizeof(input)];
     // unsigned char dec[33];
     unsigned char iv[GCM_NONCE_MID_SZ];
     unsigned char authTag[AES_BLOCK_SIZE];
     size_t        i;
 
-    memset(key, 0, sizeof(key)); // TODO: Generate key with PRNG seeded with TRNG
-    memset(iv, 0, sizeof(iv)); // TODO: Generate IV with PRNG seeded with TRNG
-    memset(enc, 0, sizeof(enc)); 
+    memset(key, 0, sizeof(key));
+    memset(iv, 0, sizeof(iv)); 
     memset(authTag, 0, sizeof(authTag)); 
 
+    PRNG_block(key);
+    PRNG_block(iv);
 
     fprintf(stderr, "Encrypt with AES128-GCM\n");
     /* Initialize AES encryption object. */
@@ -60,14 +60,14 @@ int aesgcm_enc(uint8_t* input, uint8_t* aad)
         /* Encrypt data with AES encryption object and get ciphertext and
          * authentication tag. No additional authentication data. */
         ret = wc_AesGcmEncrypt(&aesEnc, input, input, sizeof(input), iv, sizeof(iv),
-                               authTag, sizeof(authTag), aad, 0);
+                               authTag, sizeof(authTag), aad, 0);  // TODO: encrypt using another buffer
         if (ret != 0)
             fprintf(stderr, "Encrypt failed: %d\n", ret);
     }
     if (ret == 0) {
         printf("Ciphertext: ");
         for (i = 0; i < sizeof(input); i++)
-            printf("%02x", enc[i]);
+            printf("%02x", input[i]);
         printf("\n");
         printf("  Auth Tag: ");
         for (i = 0; i < sizeof(authTag); i++)
@@ -75,14 +75,17 @@ int aesgcm_enc(uint8_t* input, uint8_t* aad)
         printf("\n");
     }
 
-    key = flash_simple_write(0, key, sizeof(key));
-    iv = flash_simple_write(1, iv, sizeof(iv));
-    authTag = flash_simple_write(2, authTag, sizeof(authTag));
+    flash_simple_write(0, key, sizeof(key));
+    flash_simple_write(1, iv, sizeof(iv));
+    flash_simple_write(2, authTag, sizeof(authTag));
 
+    memset(key, 0, sizeof(key));
+    memset(iv, 0, sizeof(iv)); 
+    memset(authTag, 0, sizeof(authTag)); 
     return ret;
 }
 
-int aesgcm_dec(uint8_t* ciphertext, uint8_t* aad)
+uint8_t* aesgcm_dec(uint8_t* ciphertext, uint8_t* aad) // TODO: pass dec buffer to this method 
 {
     Aes           aesDec;
     unsigned char key[AES_256_KEY_SIZE];
@@ -91,6 +94,7 @@ int aesgcm_dec(uint8_t* ciphertext, uint8_t* aad)
     unsigned char iv[GCM_NONCE_MID_SZ]; 
     unsigned char authTag[AES_BLOCK_SIZE]; 
     size_t        i;
+    uint8_t* dec[sizeof(ciphertext)];
 
     memset(key, 0, sizeof(key)); 
     memset(iv, 0, sizeof(iv)); 
@@ -98,9 +102,9 @@ int aesgcm_dec(uint8_t* ciphertext, uint8_t* aad)
     memset(dec, 0, sizeof(dec)); 
 
 
-    key = flash_simple_read(0, key, sizeof(key));
-    iv = flash_simple_read(1, iv, sizeof(iv));
-    authTag = flash_simple_read(2, authTag, sizeof(authTag));
+    flash_simple_read(0, key, sizeof(key));
+    flash_simple_read(1, iv, sizeof(iv));
+    flash_simple_read(2, authTag, sizeof(authTag));
 
     if (ret == 0) {
         fprintf(stderr, "Decrypt with AES128-GCM\n");
@@ -118,7 +122,7 @@ int aesgcm_dec(uint8_t* ciphertext, uint8_t* aad)
          * AES decryption object and get decrypted data. No additional
          * authentication data. */
         ret = wc_AesGcmDecrypt(&aesDec, dec, ciphertext, sizeof(ciphertext), iv, sizeof(iv),
-                               authTag, sizeof(authTag), aad, 0);
+                               authTag, sizeof(authTag), aad, 0); 
         if (ret == AES_GCM_AUTH_E)
             fprintf(stderr, "Authentication failed: %d\n", ret);
         else if (ret != 0)
@@ -130,6 +134,13 @@ int aesgcm_dec(uint8_t* ciphertext, uint8_t* aad)
             printf("%02x", dec[i]);
         printf("\n");
     }
+
+    memset(key, 0, sizeof(key)); 
+    memset(iv, 0, sizeof(iv)); 
+    memset(authTag, 0, sizeof(authTag)); 
+
+    return dec; 
+    //memset(dec, 0, sizeof(dec));
 
 
 }

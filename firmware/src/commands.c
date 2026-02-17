@@ -104,9 +104,16 @@ int read(uint16_t pkt_len, uint8_t *buf) {
         print_error("Failed to read file");
         return -1;
     }
+
+    // assuming the file is encrypted
+
+    uint8_t* aad = buffer_store_oldfile_metadata(command->slot);
+
+    uint8_t* original_content = aesgcm_dec(curr_file->contents, aad);
+
     // copy structure of the persistent file
     memcpy(file_info.name, &curr_file.name, strlen(curr_file.name));
-    memcpy(file_info.contents, &curr_file.contents, curr_file.contents_len);
+    memcpy(file_info.contents, original_content, curr_file.contents_len); // changed from curr file to decrypted buffer
 
     if (!validate_permission(curr_file.group_id, PERM_READ)) {
         print_error("Invalid permission");
@@ -150,9 +157,14 @@ int write(uint16_t pkt_len, uint8_t *buf) {
         command->contents
     );
 
+   
     uint8_t* aes_buffer = buffer_store_newfile_contents(&curr_file, command->uuid);
+    uint8_t* metadata = buffer_store_newfile_metadata(&curr_file, command->uuid);
+    aesgcm_enc(aes_buffer, metadata);
 
-
+    memset(0, curr_file->contents, commands->contents_len);
+    curr_file->contents = aes_buffer;
+    
     // Store the file persistently
     if (write_file(command->slot, &curr_file, command->uuid) < 0) {
         print_error("Error storing file");
