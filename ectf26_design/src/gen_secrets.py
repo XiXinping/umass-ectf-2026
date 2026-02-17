@@ -12,6 +12,7 @@ Copyright: Copyright (c) 2026 The MITRE Corporation
 
 import argparse
 import base64
+from enum import Enum, StrEnum
 import json
 from pathlib import Path
 from cryptography.hazmat.primitives.asymmetric.x25519 import (
@@ -40,6 +41,12 @@ def gen_ecc_key_pair() -> dict[str, bytes]:
     }
 
 
+class PermissionType(StrEnum):
+    READ = "read"
+    WRITE = "write"
+    RECEIVE = "receive"
+
+
 def gen_secrets(groups: list[int]) -> bytes:
     """Generate the contents secrets file
 
@@ -56,13 +63,16 @@ def gen_secrets(groups: list[int]) -> bytes:
     :returns: Contents of the secrets file
     """
 
-    ecc_key_pairs: dict[int, dict[str, bytes]] = {}
+    ecc_key_pairs: dict[int, dict[str, dict[str, bytes]]] = {}
     for group_id in groups:
-        key_pair = gen_ecc_key_pair()
-        ecc_key_pairs[group_id] = {
-            "public": key_pair["public"],
-            "private": key_pair["private"],
-        }
+        group_keys: dict[str, dict[str, bytes]] = {}
+        for perm_type in PermissionType:
+            key_pair = gen_ecc_key_pair()
+            group_keys[str(perm_type)] = {
+                "public": key_pair["public"],
+                "private": key_pair["private"],
+            }
+        ecc_key_pairs[group_id] = group_keys
 
     # Create the secrets object
     # You can change this to generate any secret material

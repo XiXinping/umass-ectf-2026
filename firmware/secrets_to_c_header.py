@@ -83,6 +83,15 @@ class PermissionList(list):
         return ":".join(perm.serialize() for perm in self)
 
 
+def bytes_to_c_array(data: bytes) -> str:
+    lines = []
+    for i in range(0, len(data), 12):  # 12 bytes per line → 36 chars
+        chunk = data[i : i + 12]
+        hex_bytes = ", ".join(f"0x{b:02X}" for b in chunk)
+        lines.append(f"    /* 0x{i:04X} */ {hex_bytes},")
+    return "\n".join(lines)
+
+
 def secrets_to_c_header(
     permissions: PermissionList, path: str, hsm_pin: str, secrets: bytes
 ):
