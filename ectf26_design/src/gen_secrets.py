@@ -11,21 +11,32 @@ Copyright: Copyright (c) 2026 The MITRE Corporation
 """
 
 import argparse
+import base64
 import json
 from pathlib import Path
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.x25519 import (
+    X25519PrivateKey,
+    X25519PublicKey,
+)
+from cryptography.hazmat.primitives import serialization
 
-from loguru import logger
+# from loguru import logger
 
 
 # Generates a public and private key pair using Curve25519. The resulting keys are
 # stored as a bytes object.
 def gen_ecc_key_pair() -> dict[str, bytes]:
-    private_key = X25519PrivateKey.generate()
-    public_key = private_key.public_key()
+    private_key: X25519PrivateKey = X25519PrivateKey.generate()
+    public_key: X25519PublicKey = private_key.public_key()
+    private_key_bytes: bytes = private_key.private_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PrivateFormat.Raw,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    public_key_bytes: bytes = public_key.public_bytes_raw()
     return {
-        "private": private_key.private_bytes(),
-        "public": public_key.public_bytes_raw(),
+        "private": base64.b64encode(private_key_bytes).decode("ascii"),
+        "public": base64.b64encode(public_key_bytes).decode("ascii"),
     }
 
 
@@ -102,7 +113,7 @@ def main():
     # Attackers will NOT have access to the output of this, but feel free to remove
     #
     # NOTE: Printing sensitive data is generally not good security practice
-    logger.debug(f"Generated secrets: {secrets}")
+    # logger.debug(f"Generated secrets: {secrets}")
 
     # Open the file, erroring if the file exists unless the --force arg is provided
     with open(args.secrets_file, "wb" if args.force else "xb") as f:
@@ -110,7 +121,7 @@ def main():
         f.write(secrets)
 
     # For your own debugging. Feel free to remove
-    logger.success(f"Wrote secrets to {str(args.secrets_file.absolute())}")
+    # logger.success(f"Wrote secrets to {str(args.secrets_file.absolute())}")
 
 
 if __name__ == "__main__":
