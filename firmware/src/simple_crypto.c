@@ -29,7 +29,7 @@
  *
  * @return 0 on success, -1 on bad length, other non-zero for other error
  */
-
+/*
 int get_true_random_bytes(uint8_t *out, size_t num_bytes) {
     for (size_t i = 0; i < num_bytes; i++) {
         DL_TRNG_sendCommand(TRNG, DL_TRNG_CMD_NORM_FUNC);
@@ -40,13 +40,15 @@ int get_true_random_bytes(uint8_t *out, size_t num_bytes) {
 
     return 0;
 }
+*/
 
+/*
 WC_RNG *new_rng() {
     uint8_t seed[SEED_SIZE];
     get_true_random_bytes(seed, SEED_SIZE);
     return wc_rng_new(*seed, SEED_SIZE, NULL);
 }
-
+*/
 /******************************** FUNCTION PROTOTYPES
  * ********************************/
 /** @brief Encrypts plaintext using a symmetric cipher

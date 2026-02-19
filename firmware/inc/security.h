@@ -32,6 +32,18 @@ typedef struct {
     bool receive;
 } group_permission_t;
 
+
+typedef enum {
+    SECURITY_OK = 0,
+    SECURITY_ERR_INVALID_PIN,
+    SECURITY_ERR_PENALTY_ACTIVE,
+    SECURITY_ERR_INVALID_LENGTH,
+    SECURITY_ERR_CRYPTO_FAIL,
+    SECURITY_ERR_MAX_RETRIES,
+    SECURITY_ERR_TIME_ANOMALY,
+    SECURITY_ERR_BUFFER,
+} security_status_t;
+
 /** @brief Validate a pin against the HSM's pin
  *
  *  @param pin Requested pin to validate.
@@ -48,5 +60,7 @@ bool check_pin(unsigned char *pin);
  *  @return True if the HSM has the correct permission. False if not.
 */
 bool validate_permission(uint16_t group_id, permission_enum_t perm);
+
+
 
 #endif  // __SECURITY_H__
