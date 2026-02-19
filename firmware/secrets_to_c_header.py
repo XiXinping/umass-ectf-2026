@@ -10,6 +10,7 @@ own risk!
 Copyright: Copyright (c) 2026 The MITRE Corporation
 """
 
+import base64
 import os
 import json
 import argparse
@@ -85,33 +86,78 @@ class PermissionList(list):
 
 def bytes_to_c_array(data: bytes) -> str:
     lines = []
-    for i in range(0, len(data), 12):  # 12 bytes per line → 36 chars
-        chunk = data[i : i + 12]
+    for i in range(0, len(data), 8):  # 4 bytes per line → 32 chars
+        chunk = data[i : i + 8]
         hex_bytes = ", ".join(f"0x{b:02X}" for b in chunk)
-        lines.append(f"    /* 0x{i:04X} */ {hex_bytes},")
+        lines.append(f"                    {hex_bytes},")
     return "\n".join(lines)
 
 
 def secrets_to_c_header(
     permissions: PermissionList, path: str, hsm_pin: str, secrets: bytes
 ):
-    secrets_json = json.load(secrets)
+    secrets_json = json.loads(secrets)
     key_pairs = secrets_json["ecc_key_pairs"]
-    # TODO: Put the appropriate key pairs in the header file.
 
+    null_key = bytes(32)  # 32 zero bytes for absent private keys
+
+    print(key_pairs)
     with open(os.path.join(path, "secrets.h"), "w") as f:
         f.write("#ifndef __SECRETS_H__\n")
         f.write("#define __SECRETS_H__\n\n")
+        f.write("#include <stdlib.h>\n\n")
+        f.write('#include "permission.h"\n')
         f.write('#include "security.h"\n\n')
         f.write(f'#define HSM_PIN "{hsm_pin}"\n\n')
-        f.write("const static group_permission_t global_permissions[MAX_PERMS] = {\n")
-        for i, perm in enumerate(permissions):
-            f.write(
-                (
-                    f"\t{{{hex(perm.group_id)}, {str(perm.read).lower()}, "
-                    f"{str(perm.write).lower()}, {str(perm.receive).lower()}}},\n"
-                )
+        f.write(f"#define NUM_PERMS {len(permissions)}\n\n")
+        f.write("const static group_permission_t permissions[NUM_PERMS] = {\n")
+
+        for perm in permissions:
+            group_keys = key_pairs[str(perm.group_id)]
+
+            read_pub = base64.b64decode(group_keys["read"]["public"])
+            write_pub = base64.b64decode(group_keys["write"]["public"])
+            recv_pub = base64.b64decode(group_keys["receive"]["public"])
+
+            read_priv = (
+                base64.b64decode(group_keys["read"]["private"]) if perm.read else None
             )
+            write_priv = (
+                base64.b64decode(group_keys["write"]["private"]) if perm.write else None
+            )
+            recv_priv = (
+                base64.b64decode(group_keys["receive"]["private"])
+                if perm.receive
+                else None
+            )
+
+            f.write("    {\n")
+            f.write(f"        .group_id    = {perm.group_id:#x},\n")
+            f.write(f"        .read_perm    = {str(perm.read).lower()},\n")
+            f.write(f"        .write_perm   = {str(perm.write).lower()},\n")
+            f.write(f"        .receive_perm = {str(perm.receive).lower()},\n")
+            f.write("        .keys = {\n")
+
+            for key_name, pub, priv in [
+                ("read_keys", read_pub, read_priv),
+                ("write_keys", write_pub, write_priv),
+                ("receive_keys", recv_pub, recv_priv),
+            ]:
+                f.write(f"            .{key_name} = {{\n")
+                f.write(
+                    f"                .public_key  = {{\n{bytes_to_c_array(pub)}\n                }},\n"
+                )
+                if priv is not None:
+                    f.write(
+                        f"                .private_key = {{\n{bytes_to_c_array(priv)}\n                }},\n"
+                    )
+                else:
+                    f.write("                .private_key = NULL,\n")
+                f.write("            },\n")
+
+            f.write("        },\n")
+            f.write("    },\n")
+
         f.write("};\n")
         f.write("\n#endif  // __SECRETS_H__\n")
 
