@@ -25,9 +25,7 @@ typedef struct {
     bool write_perm;
     // Indicates receive permission.
     bool receive_perm;
-    // The public-private key pairs for each permission. If the HSM has a
-    // particular permission, the private_key field will be populated with a
-    // key, otherwise it will be NULL.
+    // The public-private key pairs for each permission.
     group_keys_t keys;
 } group_permission_t;
 
@@ -40,9 +38,22 @@ typedef enum {
     PERM_RECEIVE,
 } permission_t;
 
-// static const int groups[NUM_GROUPS] = {1, 2, 3};
-
+/**
+ * @brief Get the private key corresponding to a permission for a group.
+ *
+ * @param group_id The group ID
+ * @param permisison_type The kind of permission (read, write, or receive)
+ * @return Returns the raw bytes of the private key if the HSM has permission.
+ * Returns NULL otherwise.
+ */
 static uint8_t *get_private_key(int group_id, permission_t permission_type);
+/**
+ * @brief Get the public key corresponding to a permission for a group.
+ *
+ * @param group_id The group ID
+ * @param permisison_type The kind of permission (read, write, or receive)
+ * @return Returns the raw bytes of the public key.
+ */
 static uint8_t *get_public_key(int group_id, permission_t permission_type);
 
 static bool permission_allowed(uint16_t group_id, permission_t perm);

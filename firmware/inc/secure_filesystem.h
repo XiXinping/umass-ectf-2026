@@ -16,16 +16,3 @@ int secure_read(slot_t slot, file_t *dest);
 // 2. Cryptographically sign the file contents using the write private key
 // corresponding to the permission group.
 int secure_write(slot_t slot, file_t *src, uint8_t *uuid);
-
-typedef struct {
-    group_id_t group_id;
-    bool read;
-    bool write;
-    bool receive;
-    char *read_private_key;
-    char *write_private_key;
-    char *receive_private_key;
-    char *read_public_key;
-    char *write_public_key;
-    char *receive_public_key;
-} group_permission_t;

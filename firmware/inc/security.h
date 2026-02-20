@@ -4,9 +4,10 @@
  * @brief Stub file to hold security checks
  * @date 2026
  *
- * This source file is part of an example system for MITRE's 2026 Embedded CTF (eCTF).
- * This code is being provided only for educational purposes for the 2026 MITRE eCTF competition,
- * and may not meet MITRE standards for quality. Use this code at your own risk!
+ * This source file is part of an example system for MITRE's 2026 Embedded CTF
+ * (eCTF). This code is being provided only for educational purposes for the
+ * 2026 MITRE eCTF competition, and may not meet MITRE standards for quality.
+ * Use this code at your own risk!
  *
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
@@ -32,7 +33,6 @@ typedef struct {
     bool receive;
 } group_permission_t;
 
-
 typedef enum {
     SECURITY_OK = 0,
     SECURITY_ERR_INVALID_PIN,
@@ -49,7 +49,7 @@ typedef enum {
  *  @param pin Requested pin to validate.
  *
  *  @return True if the pin is valid. False if not.
-*/
+ */
 bool check_pin(unsigned char *pin);
 
 /** @brief Ensure the HSM has the requested permission
@@ -58,9 +58,9 @@ bool check_pin(unsigned char *pin);
  *  @param perm Permission type.
  *
  *  @return True if the HSM has the correct permission. False if not.
-*/
+ */
 bool validate_permission(uint16_t group_id, permission_enum_t perm);
 
+void security_init(void);
 
-
-#endif  // __SECURITY_H__
+#endif // __SECURITY_H__
