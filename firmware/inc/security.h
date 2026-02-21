@@ -18,7 +18,6 @@
 #include <stdint.h>
 
 #define MAX_PERMS 8
-#define PIN_LENGTH 6
 
 typedef enum {
     PERM_READ = 'R',

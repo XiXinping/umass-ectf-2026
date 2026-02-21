@@ -2,6 +2,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define AES_GCM_TAG_SIZE 16
+#define AES_GCM_IV_SIZE 12
+#define AES_GCM_KEY_SIZE 32
+
 /* Sign local messages for remote transfer using this HSM's private key */
 bool sign_message(const uint8_t *msg, size_t msg_len, uint8_t *signature,
                   size_t sig_len);

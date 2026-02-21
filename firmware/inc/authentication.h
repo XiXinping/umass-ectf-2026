@@ -16,6 +16,25 @@
 #define SECURITY_REQUIRE_PIN_EACH_COMMAND 1
 #endif
 
+/*
+ * Flash regions intended for protected storage.
+ * Platform should map these ranges to the most restrictive policy available.
+ */
+#define SECURITY_FLASH_REGION_TIME_ADDR 0x00002000U
+#define SECURITY_FLASH_REGION_CRYPTO_ADDR 0x00003000U
+
+/*
+ * Optional platform hooks to lock/check clock config after boot.
+ * Override these macros with platform-specific implementations.
+ */
+#ifndef SECURITY_LOCK_CLOCK_CONFIG
+#define SECURITY_LOCK_CLOCK_CONFIG() true
+#endif
+
+#ifndef SECURITY_IS_CLOCK_CONFIG_LOCKED
+#define SECURITY_IS_CLOCK_CONFIG_LOCKED() true
+#endif
+
 typedef struct {
     uint32_t magic;
     uint8_t salt[PIN_SALT_SIZE];
