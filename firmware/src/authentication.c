@@ -1,4 +1,4 @@
-#include "pin_auth.h"
+#include "authentication.h"
 #include "security.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -33,6 +33,18 @@ static bool pin_storage_valid(const pin_storage_t *state) {
     return checksum == state->checksum;
 }
 
+static void persist_pin(void) {
+    g_pin_data.magic = PIN_STORAGE_MAGIC;
+    g_pin_data.checksum = simple_checksum32((const uint8_t *)&g_pin_data,
+                                            offsetof(pin_storage_t, checksum));
+    flash_erase_page(PIN_FLASH_ADDR);
+    flash_write(PIN_FLASH_ADDR, (uint8_t *)&g_pin_data, sizeof(g_pin_data));
+}
+
+static void load_pin(void) {
+    flash_read(PIN_FLASH_ADDR, (uint8_t *)&g_pin_data, sizeof(g_pin_data));
+}
+
 static security_status_t register_failed_pin_attempt(void) {
     uint64_t now = monotonic_time_ms();
     g_pin_data.failed_attempts++;
@@ -45,7 +57,6 @@ static security_status_t register_failed_pin_attempt(void) {
     persist_pin();
     return SECURITY_ERR_INVALID_PIN;
 }
-
 static bool pin_is_lower_hex(const uint8_t *pin, size_t len) {
     size_t i;
 
@@ -185,4 +196,163 @@ void logout(void) {
     g_pin_data.session_active = false;
     g_pin_data.session_expiration_ms = 0;
     persist_pin();
+}
+
+static bool pin_storage_valid(const pin_storage_t *state) {
+    uint32_t checksum;
+
+    if (state == NULL)
+        return false;
+    if (state->magic != PIN_STORAGE_MAGIC)
+        return false;
+    if (state->failed_attempts > PIN_MAX_RETRIES)
+        return false;
+    if (state->session_active && state->session_expiration_ms == 0U)
+        return false;
+    if (!state->session_active && state->session_expiration_ms != 0U)
+        return false;
+
+    checksum = simple_checksum32((const uint8_t *)state,
+                                 offsetof(pin_storage_t, checksum));
+    return checksum == state->checksum;
+}
+
+static bool timestamp_storage_valid(const timestamp_storage_t *state) {
+    uint32_t checksum;
+
+    if (state == NULL)
+        return false;
+    if (state->magic != TIMESTAMP_STORAGE_MAGIC)
+        return false;
+    if (state->max_observed_timestamp_ms < state->first_timestamp_ms)
+        return false;
+
+    checksum = simple_checksum32((const uint8_t *)state,
+                                 offsetof(timestamp_storage_t, checksum));
+    return checksum == state->checksum;
+}
+
+static void persist_timestamp_state(void) {
+    g_time_data.magic = TIMESTAMP_STORAGE_MAGIC;
+    g_time_data.checksum = simple_checksum32(
+        (const uint8_t *)&g_time_data, offsetof(timestamp_storage_t, checksum));
+    flash_erase_page(TIME_FLASH_ADDR);
+    flash_write(TIME_FLASH_ADDR, (uint8_t *)&g_time_data, sizeof(g_time_data));
+}
+
+static void load_timestamp_state(void) {
+    flash_read(TIME_FLASH_ADDR, (uint8_t *)&g_time_data, sizeof(g_time_data));
+}
+
+static bool crypto_storage_valid(const crypto_storage_t *state) {
+    uint32_t checksum;
+    if (state == NULL)
+        return false;
+    if (state->magic != CRYPTO_STORAGE_MAGIC)
+        return false;
+
+    checksum = simple_checksum32((const uint8_t *)state,
+                                 offsetof(crypto_storage_t, checksum));
+    return checksum == state->checksum;
+}
+
+static void persist_crypto_state(void) {
+    g_crypto_data.magic = CRYPTO_STORAGE_MAGIC;
+    g_crypto_data.checksum = simple_checksum32(
+        (const uint8_t *)&g_crypto_data, offsetof(crypto_storage_t, checksum));
+    flash_erase_page(CRYPTO_FLASH_ADDR);
+    flash_write(CRYPTO_FLASH_ADDR, (uint8_t *)&g_crypto_data,
+                sizeof(g_crypto_data));
+}
+
+static void load_crypto_state(void) {
+    flash_read(CRYPTO_FLASH_ADDR, (uint8_t *)&g_crypto_data,
+               sizeof(g_crypto_data));
+}
+
+static uint8_t status_to_error_code(security_status_t status) {
+    return (uint8_t)status;
+}
+
+static bool pin_is_lower_hex(const uint8_t *pin, size_t len) {
+    size_t i;
+
+    if (pin == NULL || len != PIN_LENGTH)
+        return false;
+    for (i = 0; i < len; i++) {
+        uint8_t c = pin[i];
+        bool is_digit = (c >= (uint8_t)'0' && c <= (uint8_t)'9');
+        bool is_lower_hex_alpha = (c >= (uint8_t)'a' && c <= (uint8_t)'f');
+        if (!is_digit && !is_lower_hex_alpha)
+            return false;
+    }
+    return true;
+}
+
+static security_status_t register_failed_pin_attempt(void) {
+    uint64_t now = monotonic_time_ms();
+    g_pin_data.failed_attempts++;
+    g_pin_data.penalty_expiration_ms = safe_add_u64(now, PIN_FAILURE_DELAY_MS);
+    g_pin_data.session_active = false;
+    g_pin_data.session_expiration_ms = 0;
+    g_authenticated = false;
+    g_session_expiration_ms = 0;
+    flush_timestamp_state_if_needed();
+    persist_pin();
+    return SECURITY_ERR_INVALID_PIN;
+}
+
+static bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
+                                     uint8_t *err) {
+    if (err == NULL)
+        return false;
+    if (body == NULL || body_len < PIN_LENGTH) {
+        *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
+        return false;
+    }
+
+    security_status_t st = security_verify_pin(body, PIN_LENGTH);
+    if (st != SECURITY_OK) {
+        *err = status_to_error_code(st);
+        return false;
+    }
+
+    return true;
+}
+
+static void persist_timestamp_state(void);
+
+/* Clamp non-monotonic rollback from platform time source. */
+static uint64_t monotonic_time_ms(void) {
+    uint64_t tolerated_now;
+    uint64_t now = platform_get_time_ms();
+    if (!checked_add_u64(now, TIMESTAMP_DRIFT_TOLERANCE_MS, &tolerated_now)) {
+        tolerated_now = UINT64_MAX;
+    }
+
+    if (tolerated_now < g_time_data.max_observed_timestamp_ms) {
+        g_time_anomaly_detected = true;
+        g_authenticated = false;
+        return g_last_time_ms;
+    }
+
+    if (now < g_last_time_ms) {
+        g_time_anomaly_detected = true;
+        g_authenticated = false;
+        return g_last_time_ms;
+    }
+
+    g_last_time_ms = now;
+    if (now > g_time_data.max_observed_timestamp_ms) {
+        g_time_data.max_observed_timestamp_ms = now;
+    }
+    return now;
+}
+
+static void flush_timestamp_state_if_needed(void) {
+    if (g_time_anomaly_detected)
+        return;
+    if (g_time_data.max_observed_timestamp_ms <= g_time_data.first_timestamp_ms)
+        return;
+    persist_timestamp_state();
 }

@@ -20,19 +20,6 @@
 #define MAX_PERMS 8
 
 typedef enum {
-    PERM_READ = 'R',
-    PERM_WRITE = 'W',
-    PERM_RECEIVE = 'C',
-} permission_enum_t;
-
-typedef struct {
-    uint16_t group_id;
-    bool read;
-    bool write;
-    bool receive;
-} group_permission_t;
-
-typedef enum {
     SECURITY_OK = 0,
     SECURITY_ERR_INVALID_PIN,
     SECURITY_ERR_PENALTY_ACTIVE,
@@ -50,15 +37,6 @@ typedef enum {
  *  @return True if the pin is valid. False if not.
  */
 bool check_pin(unsigned char *pin);
-
-/** @brief Ensure the HSM has the requested permission
- *
- *  @param group_id Group ID.
- *  @param perm Permission type.
- *
- *  @return True if the HSM has the correct permission. False if not.
- */
-bool validate_permission(uint16_t group_id, permission_enum_t perm);
 
 void security_init(void);
 

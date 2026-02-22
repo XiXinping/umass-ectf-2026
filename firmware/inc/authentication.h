@@ -74,15 +74,3 @@ bool validate_permission(uint16_t group_id, permission_t perm);
 
 /* Check if penalty delay is active */
 bool penalty_active(void);
-
-/* ---------------- Remote HSM / File Transfer ---------------- */
-
-/* Verify that a remote HSM message is valid:
-   - sender identity via ECC signature
-   - permission group of sender
-   - file integrity via AES-GCM tag */
-bool security_verify_remote_hsm(const uint8_t *msg, size_t msg_len,
-                                const uint8_t *signature, size_t sig_len,
-                                const uint8_t *file, size_t file_len,
-                                const uint8_t *tag, uint16_t sender_group,
-                                permission_t action);

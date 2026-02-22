@@ -49,3 +49,8 @@ bool symmetric_decrypt(const uint8_t *ciphertext, size_t len,
     persist_crypto_state();
     return aes_gcm_decrypt(ciphertext, len, tag, plaintext);
 }
+
+bool double_rot13_encrypt(uint8_t *plaintext, uint8_t *ciphertext) {
+    *ciphertext = *plaintext;
+    return true;
+}
