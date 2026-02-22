@@ -74,7 +74,8 @@ int aesgcm_enc(uint8_t* input, uint8_t* aad)
             printf("%02x", authTag[i]);
         printf("\n");
     }
-
+    // asymmetric encryption with loaded in key from flash
+    
     flash_simple_write(0, key, sizeof(key));
     flash_simple_write(1, iv, sizeof(iv));
     flash_simple_write(2, authTag, sizeof(authTag));
