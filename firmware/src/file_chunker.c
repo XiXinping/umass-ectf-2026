@@ -18,7 +18,7 @@ uint8_t* buffer_store_oldfile_contents(slot_t slot) {
     filesystem_entry_t* metadata; 
 
     if(is_slot_in_use(slot)) {
-        return; // add graceful return logic 
+        return NULL; // add graceful return logic 
     }
     read_file(slot, &file);
     metadata = get_file_metadata(slot);
@@ -32,18 +32,6 @@ uint8_t* buffer_store_oldfile_contents(slot_t slot) {
     memcpy(buffer, file->contents, file->contents_len);
     offset += file->contents_len;
 
-    /*
-    memcpy(buffer + offset, metadata->flash_addr, sizeof(metadata->flash_addr));
-    offset += sizeof(metadata->flash_addr);
-
-    memcpy(buffer + offset, metadata->length, sizeof(metadata->length));
-    offset += sizeof(metadata->length);
-
-    memcpy(buffer + offset, metadata->padding, sizeof(metadata->padding));
-
-    */
-    // add offset potentially
-
     return buffer;
 }
 
@@ -52,7 +40,7 @@ uint8_t* buffer_store_oldfile_metadata(slot_t slot) {
     filesystem_entry_t* metadata; 
 
     if(is_slot_in_use(slot)) {
-        return; // add graceful return logic 
+        return NULL; // add graceful return logic 
     }
     metadata = get_file_metadata(slot);
 
@@ -70,18 +58,6 @@ uint8_t* buffer_store_oldfile_metadata(slot_t slot) {
 
     memcpy(buffer + offset, file->name, MAX_NAME_SIZE);
     offset += MAX_NAME_SIZE;
-
-    /*
-    memcpy(buffer + offset, metadata->flash_addr, sizeof(metadata->flash_addr));
-    offset += sizeof(metadata->flash_addr);
-
-    memcpy(buffer + offset, metadata->length, sizeof(metadata->length));
-    offset += sizeof(metadata->length);
-
-    memcpy(buffer + offset, metadata->padding, sizeof(metadata->padding));
-
-    */
-    // add offset potentially
 
     return buffer;
 }
@@ -108,13 +84,6 @@ uint8_t* buffer_store_newfile_contents(file_t* file, uint8_t* UUID) {
     memcpy(buffer, file->contents, file->contents_len);
     offset += file->contents_len;
 
-    /*
-    memcpy(buffer + offset, &flash_addr, sizeof(flash_addr));
-    offset += sizeof(flash_addr);
-
-    memcpy(buffer + offset, &length, sizeof(length));
-    // add offset potentially
-    */
     return buffer;
 }
 
@@ -136,14 +105,5 @@ uint8_t* buffer_store_newfile_metadata(file_t* file, uint8_t* UUID) {
     memcpy(buffer + offset, file->name, MAX_NAME_SIZE);
     offset += MAX_NAME_SIZE;
 
-    
-
-    /*
-    memcpy(buffer + offset, &flash_addr, sizeof(flash_addr));
-    offset += sizeof(flash_addr);
-
-    memcpy(buffer + offset, &length, sizeof(length));
-    // add offset potentially
-    */
     return buffer;
 }
