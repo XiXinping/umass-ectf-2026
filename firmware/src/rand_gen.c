@@ -7,12 +7,11 @@
 
 // #define NUM_CAPTURES (8)
 
-//volatile uint32_t gTRNGBuffer[NUM_CAPTURES];
+// volatile uint32_t gTRNGBuffer[NUM_CAPTURES];
 
 #define CUSTOM_RAND_GENERATE_SEED trng_gen_seed
 
-int trng_gen_seed(uint8_t* output, int size)
-{
+int trng_gen_seed(uint8_t *output, int size) {
     uint32_t i;
     // SYSCFG_DL_init();
 
@@ -33,56 +32,41 @@ int trng_gen_seed(uint8_t* output, int size)
 
     /* Set a SW breakpoint. Check gTRNGBuffer is filled with random numbers */
     //__BKPT(0);
-/*
-    while (1) {
-        __WFI();
-    }
-    */
+    /*
+        while (1) {
+            __WFI();
+        }
+        */
 }
 
-int wc_GenerateSeed(OS_Seed* os, byte* output, word32 sz)
-{
-        (void)os; /* Suppress unused arg warning */
-        return CUSTOM_RAND_GENERATE_SEED(output, sz);
+int wc_GenerateSeed(OS_Seed *os, byte *output, word32 sz) {
+    (void)os; /* Suppress unused arg warning */
+    return CUSTOM_RAND_GENERATE_SEED(output, sz);
 }
 
-int PRNG_nonce(uint8_t* output)
-{
+// Generates a specified number of random bytes using WolfCrypt's PRNG seeded
+// by the hardware TRNG.
+int gen_random(uint8_t *output, size_t size) {
     WC_RNG rng;
-    byte nonce[12];
-    int ret = wc_InitRngNonce(&rng, output, sizeof(output));
-    if (ret != 0){
-        printf(“RNG init failed”);
-        return -1;
-    }
-
-    int ret = wc_FreeRng(&rng);
-    if (ret != 0) {
-        return -1; //free of rng failed!
-    }
-
-    return 0;
-}
-
-int PRNG_block(uint8_t* output)
-{
-    RNG  rng;
-
+    // uint8_t nonce[32];
+    // CUSTOM_RAND_GENERATE_SEED(nonce, sizeof(nonce));
+    // int ret = wc_InitRngNonce(&rng, nonce, sizeof(nonce));
     int ret = wc_InitRng(&rng);
     if (ret != 0) {
-        return -1; //init of rng failed!
+        printf("RNG init failed");
+        return -1;
     }
-
     ret = wc_RNG_GenerateBlock(&rng, output, sizeof(output));
     if (ret != 0) {
-        return -1; //generating block failed!
+        printf("Generating block failed");
+        return -2;
     }
 
-    int ret = wc_FreeRng(&rng);
+    ret = wc_FreeRng(&rng);
     if (ret != 0) {
-        return -1; //free of rng failed!
+        printf("Failed to free RNG");
+        return -3;
     }
 
     return 0;
 }
-

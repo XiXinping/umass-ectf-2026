@@ -1,76 +1,90 @@
 #include <wolfssl/options.h>
-#include <wolfssl/wolfcrypt/settings.h>
+#include <wolfssl/wolfcrypt/aes.h>
+#include <wolfssl/wolfcrypt/curve25519.h>
 #include <wolfssl/wolfcrypt/ecc.h>
 #include <wolfssl/wolfcrypt/random.h>
+#include <wolfssl/wolfcrypt/settings.h>
 
 #include <wolfssl/ssl.h>
 #include <wolfssl/test.h>
 
-
-
-int ecc_asymmetric_enc(uint8_t* input, uint8_t* public_key) // Takes in public key of recepient, and encrypts it
-
-{
+int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
+                           curve25519_key *public_key, uint8_t additional_data,
+                           size_t additional_data_size, uint8_t *ciphertext_out,
+                           size_t *ciphertext_size, uint8_t *iv_out,
+                           uint8_t *auth_tag_out,
+                           uint8_t *cipher_public_key_out) {
     byte out[sizeof(input)];
     word32 outSz = sizeof(out);
     // int public_key_ret;
     int ret;
-    int curve_ret;
 
     WC_RNG rng;
-    byte priv[1];
+    byte ephemeral_priv_bytes[32];
+    curve25519_key ephemeral_priv_key;
 
     wc_InitRng(&rng);
-    int curve_ret = wc_curve25519_make_priv(&rng, sizeof(priv), priv);
-    if (curve_ret != 0) {
-        // error generating private key
+    if (wc_curve25519_make_priv(&rng, sizeof(ephemeral_priv_bytes),
+                                ephemeral_priv_bytes) != 0) {
+        printf("Failed to generate ephemeral private key!");
+        return -1;
     }
 
+    if (wc_curve25519_import_private(ephemeral_priv_bytes,
+                                     sizeof(ephemeral_priv_bytes),
+                                     &ephemeral_priv_key) != 0) {
+        printf("Failed to generate ephemeral private key!");
+        return -1;
+    };
 
-    byte cipherPrivKey[] = {  };
-    byte pubKey[] = {  };
-    byte secret[1024]; // can hold 1024 byte shared secret key
-    word32 secretSz = sizeof(secret);
+    byte secret_bytes[32];
 
-
-    int shared_secret = wc_ecc_shared_secret(cipherPrivKey, pubKey, secret, secretSz);
-    // ecc_key key;
-    //wc_ecc_init(&key);
-
-   // key_ret = wc_ecc_import_private_key(priv, sizeof(priv), pub, sizeof(pub), &key);
-
-    if (private_key_ret != 0) {
-        // error importing key
+    if (wc_curve25519_shared_secret(&ephemeral_priv_key, public_key,
+                                    secret_bytes,
+                                    (word32 *)sizeof(secret_bytes)) != 0) {
+        printf("Failed to generate shared secret!");
+        return -1;
     }
 
-    ecc_key cli, serv;
-    
-    
-    // initialize cli with private key
-    // initialize serv with received public key
+    byte symmetric_key[32];
+    if (wc_X963_KDF(WC_HASH_TYPE_SHA256, secret_bytes, sizeof(secret_bytes),
+                    NULL, symmetric_key, sizeof(symmetric_key)) != 0) {
+        printf("Failed to derive symmetric key!");
+        return -1;
+    }
 
-    ecEncCtx* cliCtx, servCtx;
-    // initialize cliCtx and servCtx
-    // exchange salts
-    ret = wc_ecc_encrypt(&cli, &serv, input, sizeof(input), out, &outSz, cliCtx,
-        1);
+    byte cipher_public_key[32];
+    if (wc_curve25519_make_pub(sizeof(cipher_public_key), cipher_public_key,
+                               sizeof(ephemeral_priv_bytes),
+                               ephemeral_priv_bytes) != 0) {
+        printf("Ate shit and died");
+        return -1;
+    }
+    byte iv[GCM_NONCE_MID_SZ];
+    gen_random(iv, GCM_NONCE_MID_SZ);
+
+    if (aes_gcm_encrypt(plaintext, plaintext_size, symmetric_key, iv,
+                        auth_tag_out, additional_data, additional_data_size,
+                        ciphertext_out, auth_tag_out) != 0) {
+        printf("Unable to encrypt with AES!");
+        return -1;
+    }
 }
 
-uint8_t* ecc_asymmetric_dec(uint8_t* ciphertext)
-{
+uint8_t *ecc_asymmetric_dec(uint8_t *ciphertext) {
     byte plain[sizeof(ciphertext)];
     word32 plainSz = sizeof(plain);
     int ret;
     ecc_key cli, serv;
     // initialize cli with private key
     // initialize serv with received public key
-    ecEncCtx* cliCtx, servCtx;
+    ecEncCtx *cliCtx, servCtx;
     // initialize cliCtx and servCtx
     // exchange salts
-    ret = wc_ecc_decrypt(&cli, &serv, ciphertext, sizeof(ciphertext),
-    plain, &plainSz, cliCtx);
+    ret = wc_ecc_decrypt(&cli, &serv, ciphertext, sizeof(ciphertext), plain,
+                         &plainSz, cliCtx);
 
-    if(ret != 0) {
+    if (ret != 0) {
         // error decrypting message
     }
 }
@@ -82,12 +96,12 @@ int ecc_sign_file_digest() {
 
     byte sig[512]; // will hold generated signature
     sigSz = sizeof(sig);
-    byte digest[] = { };// initialize with message hash };
-    wc_InitRng(&rng); // initialize rng
-    wc_ecc_init(&key); // initialize key
+    byte digest[] = {};              // initialize with message hash };
+    wc_InitRng(&rng);                // initialize rng
+    wc_ecc_init(&key);               // initialize key
     wc_ecc_make_key(&rng, 32, &key); // make public/private key pair
     ret = wc_ecc_sign_hash(digest, sizeof(digest), sig, &sigSz, &key);
-    if ( ret != 0 ) {
+    if (ret != 0) {
         // error generating message signature
     }
 }
@@ -97,14 +111,14 @@ int ecc_verify_file_digest() {
     ecc_key key;
     int ret, verified = 0;
 
-    byte sig[1024]; //initialize with received signature };
+    byte sig[1024];   // initialize with received signature };
     byte digest[] = { // initialize with message hash };
-    // initialize key with received public key
-    ret = wc_ecc_verify_hash(sig, sizeof(sig), digest, sizeof(digest), &verified, &key);
-    if ( ret != 0 ) {
+        // initialize key with received public key
+        ret = wc_ecc_verify_hash(sig, sizeof(sig), digest, sizeof(digest),
+                                 &verified, &key);
+    if (ret != 0) {
         // error performing verification
-    } else if ( verified == 0 ) {
+    } else if (verified == 0) {
         // the signature is invalid
     }
-
 }

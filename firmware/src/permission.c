@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <wolfssl/wolfcrypt/curve25519.h>
+
 // Return of permission entry with the given group ID
 static const group_permission_t *permission_entry(uint16_t group_id) {
     const group_permission_t *entry = &permissions[group_id];
@@ -17,55 +19,69 @@ static const group_permission_t *permission_entry(uint16_t group_id) {
     }
     return NULL;
 }
-static const uint8_t *get_private_key(int group_id,
-                                      permission_t permission_type) {
+static const int get_private_key(int group_id, permission_t permission_type,
+                                 curve25519_key *private_key_out) {
     const group_permission_t *entry = permission_entry(group_id);
     if (entry == NULL) {
         return NULL;
     }
+    uint8_t private_key_raw[32];
     switch (permission_type) {
     case PERM_READ:
         // The HSM only has the private key if it has the given permission
         if (!entry->read_perm) {
-            return NULL;
+            return -1;
         }
-        return entry->keys.read_keys.private_key;
+        private_key_raw = entry->keys.read_keys.private_key;
     case PERM_WRITE:
         if (!entry->write_perm) {
-            return NULL;
+            return -1;
         }
-        return entry->keys.write_keys.private_key;
+        private_key_raw = entry->keys.write_keys.private_key;
     case PERM_RECEIVE:
         if (!entry->receive_perm) {
-            return NULL;
+            return -1;
         }
-        return entry->keys.receive_keys.private_key;
+        private_key_raw = entry->keys.receive_keys.private_key;
     default:
         return NULL;
     };
+    wc_curve25519_init(&private_key_out);
+    if (wc_curve25519_import_private(private_key_raw, sizeof(private_key_raw),
+                                     &private_key_out) != 0) {
+        printf("Failed to import private key!");
+        return -1;
+    }
+    return 0;
 }
-static const uint8_t *get_public_key(int group_id,
-                                     permission_t permission_type) {
+
+static const int get_public_key(int group_id, permission_t permission_type,
+                                curve25519_key *public_key_out) {
     const group_permission_t *entry = permission_entry(group_id);
     if (entry == NULL) {
-        return NULL;
+        return -1;
     }
+    uint8_t public_key_raw[32];
     switch (permission_type) {
     case PERM_READ:
-        return entry->keys.read_keys.public_key;
+        public_key_raw = entry->keys.read_keys.public_key;
     case PERM_WRITE:
         if (!entry->write_perm) {
-            return NULL;
+            return -1;
         }
-        return entry->keys.write_keys.public_key;
+        public_key_raw = entry->keys.write_keys.public_key;
     case PERM_RECEIVE:
-        if (!entry->receive_perm) {
-            return NULL;
-        }
-        return entry->keys.receive_keys.public_key;
+        public_key_raw = entry->keys.receive_keys.public_key;
     default:
-        return false;
+        return -1;
     };
+    wc_curve25519_init(&out);
+    if (wc_curve25519_import_public(public_key_raw, sizeof(public_key_raw),
+                                    &out) != 0) {
+        printf("Failed to import public key!");
+        return -1;
+    }
+    return 0;
 }
 
 static bool permission_allowed(uint16_t group_id, permission_t perm) {
