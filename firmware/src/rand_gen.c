@@ -44,6 +44,44 @@ int wc_GenerateSeed(OS_Seed *os, byte *output, word32 sz) {
     return CUSTOM_RAND_GENERATE_SEED(output, sz);
 }
 
+int init_random(WC_RNG *rng) {
+    int ret = wc_InitRng(&rng);
+    if (ret != 0) {
+        printf("RNG init failed");
+        return -1;
+    }
+    return 0
+}
+
+int free_random(WC_RNG *rng) {
+    ret = wc_FreeRng(rng);
+    if (ret != 0) {
+        printf("Failed to free RNG");
+        return -1;
+    }
+    return 0
+}
+
+int gen_random_block(WC_RNG *rng, uint8_t *output, size_t size) {
+    
+    ret = wc_RNG_GenerateBlock(rng, output, size);
+    if (ret != 0) {
+        printf("Generating block failed");
+        return -1;
+    }
+    return 0;
+}
+
+int gen_random_block(WC_RNG *rng, uint8_t *output, size_t size) {
+    
+    ret = wc_RNG_GenerateBlock(rng, output, size);
+    if (ret != 0) {
+        printf("Generating block failed");
+        return -1;
+    }
+    return 0;
+}
+
 // Generates a specified number of random bytes using WolfCrypt's PRNG seeded
 // by the hardware TRNG.
 int gen_random(uint8_t *output, size_t size) {
@@ -56,7 +94,7 @@ int gen_random(uint8_t *output, size_t size) {
         printf("RNG init failed");
         return -1;
     }
-    ret = wc_RNG_GenerateBlock(&rng, output, sizeof(output));
+    ret = wc_RNG_GenerateBlock(&rng, output, size);
     if (ret != 0) {
         printf("Generating block failed");
         return -2;
