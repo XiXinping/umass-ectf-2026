@@ -69,24 +69,53 @@ int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
         printf("Unable to encrypt with AES!");
         return -1;
     }
+    return 0;
 }
 
-uint8_t *ecc_asymmetric_dec(uint8_t *ciphertext) {
-    byte plain[sizeof(ciphertext)];
-    word32 plainSz = sizeof(plain);
-    int ret;
-    ecc_key cli, serv;
-    // initialize cli with private key
-    // initialize serv with received public key
-    ecEncCtx *cliCtx, servCtx;
-    // initialize cliCtx and servCtx
-    // exchange salts
-    ret = wc_ecc_decrypt(&cli, &serv, ciphertext, sizeof(ciphertext), plain,
-                         &plainSz, cliCtx);
+uint8_t *ecc_asymmetric_dec(uint8_t *ciphertext, size_t ciphertext_size,
+                           curve25519_key *private_key, uint8_t additional_data,
+                           size_t additional_data_size, uint8_t *plain_out,
+                           size_t *plaintext_size, uint8_t *iv,
+                           uint8_t *auth_tag,
+                           uint8_t *cipher_public_key, size_t cipher_public_key_size) {
+    byte plain[ciphertext_size];
 
-    if (ret != 0) {
-        // error decrypting message
+    curve25519_key pub_key;
+
+    if (wc_curve25519_import_public(cipher_public_key,
+                                     cipher_public_key_size,
+                                     &pub_key) != 0) {
+        printf("Failed to generate ephemeral private key!");
+        return -1;
+    };
+
+    byte secret_bytes[32];
+
+    if (wc_curve25519_shared_secret(private_key, pub_key,
+                                    secret_bytes,
+                                    (word32 *)sizeof(secret_bytes)) != 0) {
+        printf("Failed to generate shared secret!");
+        return -1;
     }
+
+    byte symmetric_key[32];
+    if (wc_X963_KDF(WC_HASH_TYPE_SHA256, secret_bytes, sizeof(secret_bytes),
+                    NULL, symmetric_key, sizeof(symmetric_key)) != 0) {
+        printf("Failed to derive symmetric key!");
+        return -1;
+    }
+
+    if(aes_gcm_dec(ciphertext, ciphertext_size, symmetric_key,
+                iv, auth_tag, additional_data,
+                additional_data_size, plain) != 0) {
+            return -1;
+    }
+
+    return 0;
+
+
+
+
 }
 
 int ecc_sign_file_digest() {
