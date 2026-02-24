@@ -114,11 +114,6 @@ int read(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    // assuming the file is encrypted
-
-    uint8_t *aad = buffer_store_oldfile_metadata(command->slot);
-
-    uint8_t *original_content = aesgcm_dec(curr_file->contents, aad);
 
     // copy structure of the persistent file
     memcpy(file_info.name, &curr_file.name, strlen(curr_file.name));
@@ -161,12 +156,6 @@ int write(uint16_t pkt_len, uint8_t *buf) {
 
     create_file(&curr_file, command->group_id, command->name,
                 command->contents_len, command->contents);
-
-    uint8_t *aes_buffer =
-        buffer_store_newfile_contents(&curr_file, command->uuid);
-    uint8_t *metadata =
-        buffer_store_newfile_metadata(&curr_file, command->uuid);
-    aesgcm_enc(aes_buffer, metadata);
 
     memset(0, curr_file->contents, commands->contents_len);
     curr_file->contents = aes_buffer;
