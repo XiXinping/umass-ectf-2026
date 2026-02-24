@@ -45,7 +45,7 @@ int wc_GenerateSeed(OS_Seed *os, byte *output, word32 sz) {
 }
 
 int init_random(WC_RNG *rng) {
-    int ret = wc_InitRng(&rng);
+    int ret = wc_InitRng(rng);
     if (ret != 0) {
         printf("RNG init failed");
         return -1;

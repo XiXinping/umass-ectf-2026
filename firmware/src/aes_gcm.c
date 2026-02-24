@@ -52,7 +52,7 @@ int aes_gcm_enc(uint8_t *plaintext, size_t plaintext_size, uint8_t *key,
         /* Encrypt data with AES encryption object and get ciphertext and
          * authentication tag. No additional authentication data. */
         ret = wc_AesGcmEncrypt(&aes_enc, ciphertext_out, plaintext,
-                               sizeof(plaintext), iv, sizeof(iv), auth_tag,
+                               plaintext_size, iv, GCM_NONCE_MID_SZ, auth_tag,
                                sizeof(auth_tag), additional_data,
                                additional_data_size);
         if (ret != 0)
@@ -95,8 +95,8 @@ int aes_gcm_dec(uint8_t *ciphertext, size_t ciphertext_size, uint8_t *key,
          * AES decryption object and get decrypted data. No additional
          * authentication data. */
         ret = wc_AesGcmDecrypt(
-            &aesDec, plaintext_out, ciphertext, ciphertext_size, iv, sizeof(iv),
-            auth_tag, sizeof(auth_tag), additional_data, additional_data_size);
+            &aesDec, plaintext_out, ciphertext, ciphertext_size, iv, GCM_NONCE_MID_SZ,
+            auth_tag, AES_BLOCK_SIZE, additional_data, additional_data_size); // size of auth_tag is 16 bytes
         if (ret == AES_GCM_AUTH_E)
             fprintf(stderr, "Authentication failed: %d\n", ret);
         else if (ret != 0)

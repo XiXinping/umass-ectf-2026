@@ -88,7 +88,7 @@ uint8_t *ecc_asymmetric_dec(uint8_t *ciphertext, size_t ciphertext_size,
 
     byte secret_bytes[32];
     word32 secret_size = sizeof(secret_bytes);
-    if (wc_curve25519_shared_secret(private_key, pub_key,
+    if (wc_curve25519_shared_secret(private_key, &pub_key,
                                     secret_bytes,
                                     &secret_size) != 0) {
         printf("Failed to generate shared secret!");
