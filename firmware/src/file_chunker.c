@@ -11,59 +11,43 @@
  Zero out buffer once completed
 */
 
-uint8_t* buffer_store_oldfile_contents(slot_t slot) {
+int buffer_store_oldfile(slot_t slot, uint8_t* file_buffer, size_t file_size, uint8_t* metadata_buffer, size_t metadata_size) {
     // TODO: Buffer overflow/null checks, null checks for fields
 
     file_t* file;
     filesystem_entry_t* metadata; 
 
     if(is_slot_in_use(slot)) {
-        return NULL; // add graceful return logic 
+        return -1; // add graceful return logic 
     }
-    read_file(slot, &file);
+    read_file(slot, file);
     metadata = get_file_metadata(slot);
 
-    __attribute__((aligned(16))) 
-    uint8_t buffer[file->contents_len + (16 - (file->contents_len % 16))];
-    memset(buffer, 0, sizeof(buffer));
+    // Fills file_buffer with file contents
+    //__attribute__((aligned(16))) 
+    //uint8_t buffer[file->contents_len + (16 - (file->contents_len % 16))]; USE SIZE IN COMMANDS.C instead
+    memset(file_buffer, 0, file_size);
     
     int offset = 0;
     
-    memcpy(buffer, file->contents, file->contents_len);
-    offset += file->contents_len;
-
-    return buffer;
-}
-
-uint8_t* buffer_store_oldfile_metadata(slot_t slot) {
-    // TODO: Buffer overflow/null checks, null checks for fields
-    filesystem_entry_t* metadata; 
-
-    if(is_slot_in_use(slot)) {
-        return NULL; // add graceful return logic 
-    }
-    metadata = get_file_metadata(slot);
-
-   //__attribute__((aligned(4))) 
-    uint8_t buffer[sizeof(group_id_t) + UUID_SIZE + MAX_NAME_SIZE];
-    memset(buffer, 0, sizeof(buffer));
+    memcpy(file_buffer, file->contents, file->contents_len);
+    //offset += file->contents_len;
     
-    int offset = 0;
+    // Fills metadata_buffer 
+    memset(metadata_buffer, 0, metadata_size);
+    offset = 0;
     
-    memcpy(buffer, &file->group_id, sizeof(group_id_t));
+    memcpy(metadata_buffer, &file->group_id, sizeof(group_id_t));
     offset += sizeof(group_id_t);
 
-    memcpy(buffer + offset, metadata->uuid, UUID_SIZE);
+    memcpy(metadata_buffer + offset, metadata->uuid, UUID_SIZE);
     offset += UUID_SIZE;
 
-    memcpy(buffer + offset, file->name, MAX_NAME_SIZE);
+    memcpy(metadata_buffer + offset, file->name, MAX_NAME_SIZE);
     offset += MAX_NAME_SIZE;
 
-    return buffer;
+    return 0;
 }
-
-
-
 /**  
  ASSUMPTION: File is in transsit
  Zero out buffer 
@@ -72,38 +56,33 @@ uint8_t* buffer_store_oldfile_metadata(slot_t slot) {
  Zero out buffer once completed
 */
 
-uint8_t* buffer_store_newfile_contents(file_t* file, uint8_t* UUID) {
+int buffer_store_newfile(file_t* file, uint8_t* UUID, uint8_t* file_buffer, size_t file_size, uint8_t* metadata_buffer, size_t metadata_size) {
     // TODO: Buffer overflow/null checks, null checks for fields
     
     int offset = 0;
 
-    __attribute__((aligned(16))) 
-    uint8_t buffer[file->contents_len + (16 - (file->contents_len % 16))];
-    memset(buffer, 0, sizeof(buffer));
+    //__attribute__((aligned(16))) 
+    // uint8_t buffer[file->contents_len + (16 - (file->contents_len % 16))];
+    memset(file_buffer, 0, file_size);
 
     memcpy(buffer, file->contents, file->contents_len);
-    offset += file->contents_len;
+    //offset += file->contents_len;
 
-    return buffer;
-}
 
-uint8_t* buffer_store_newfile_metadata(file_t* file, uint8_t* UUID) {
-    // TODO: Buffer overflow/null checks, null checks for fields
-    
-    int offset = 0;
+    offset = 0;
+    memset(metadata_buffer, 0, metadata_size);
 
-    //__attribute__((aligned(4))) 
-    uint8_t buffer[sizeof(group_id_t) + UUID_SIZE + MAX_NAME_SIZE];
-    memset(buffer, 0, sizeof(buffer));
-
-    memcpy(buffer, &file->group_id, sizeof(group_id_t));
+    memcpy(metadata_buffer, &file->group_id, sizeof(group_id_t));
     offset += sizeof(group_id_t);
 
-    memcpy(buffer + offset, UUID, UUID_SIZE);
+    memcpy(metadata_buffer + offset, UUID, UUID_SIZE);
     offset += UUID_SIZE;
 
-    memcpy(buffer + offset, file->name, MAX_NAME_SIZE);
+    memcpy(metadata_buffer + offset, file->name, MAX_NAME_SIZE);
     offset += MAX_NAME_SIZE;
 
-    return buffer;
+    return 0;
 }
+
+    //__attribute__((aligned(4))) 
+    // 
