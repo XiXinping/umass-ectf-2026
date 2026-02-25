@@ -1,5 +1,23 @@
+#include "aes_gcm.h"
 #include "filesystem.h"
 #include "simple_flash.h"
+#include <stdint.h>
+
+#define SIGNATURE_SIZE 32
+#define SHARED_SECRET_SIZE 32
+
+typedef struct {
+    uint32_t in_use;
+    group_id_t group_id;
+    char name[MAX_NAME_SIZE];
+    uint16_t length;
+
+    uint8_t nonce[NONCE_SIZE];
+    uint8_t auth_tag[AUTH_TAG_SIZE];
+    uint8_t shared_secret[SHARED_SECRET_SIZE];
+    uint8_t encrypted_contents[MAX_CONTENTS_SIZE];
+    uint8_t signature[SIGNATURE_SIZE];
+} secure_file_t;
 
 // Read a file from a slot and output it to the buffer pointed to by dest.
 // Secure read will do the following:

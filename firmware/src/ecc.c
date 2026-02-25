@@ -37,8 +37,7 @@ int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
     byte secret_bytes[32];
     word32 secret_size = sizeof(secret_bytes);
     if (wc_curve25519_shared_secret(&ephemeral_priv_key, public_key,
-                                    secret_bytes,
-                                    &secret_size) != 0) {
+                                    secret_bytes, &secret_size) != 0) {
         printf("Failed to generate shared secret!");
         return -1;
     }
@@ -57,8 +56,8 @@ int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
         printf("Failed to create public key!");
         return -1;
     }
-    byte iv[GCM_NONCE_MID_SZ];
-    gen_random(iv, GCM_NONCE_MID_SZ); // Replace this call with gen_random_block
+    byte nonce[NONCE_SIZE];
+    gen_random(nonce, NONCE_SIZE); // Replace this call with gen_random_block
 
     if (aes_gcm_encrypt(plaintext, plaintext_size, symmetric_key, iv,
                         auth_tag_out, additional_data, additional_data_size,
@@ -70,26 +69,25 @@ int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
 }
 
 uint8_t *ecc_asymmetric_dec(uint8_t *ciphertext, size_t ciphertext_size,
-                           curve25519_key *private_key, uint8_t additional_data,
-                           size_t additional_data_size, uint8_t *plain_out,
-                           size_t *plaintext_size, uint8_t *iv,
-                           uint8_t *auth_tag,
-                           uint8_t *cipher_public_key, size_t cipher_public_key_size) {
+                            curve25519_key *private_key,
+                            uint8_t additional_data,
+                            size_t additional_data_size, uint8_t *plain_out,
+                            size_t *plaintext_size, uint8_t *iv,
+                            uint8_t *auth_tag, uint8_t *cipher_public_key,
+                            size_t cipher_public_key_size) {
     byte plain[ciphertext_size];
 
     curve25519_key pub_key;
 
-    if (wc_curve25519_import_public(cipher_public_key,
-                                     cipher_public_key_size,
-                                     &pub_key) != 0) {
+    if (wc_curve25519_import_public(cipher_public_key, cipher_public_key_size,
+                                    &pub_key) != 0) {
         printf("Failed to generate ephemeral private key!");
         return -1;
     };
 
     byte secret_bytes[32];
     word32 secret_size = sizeof(secret_bytes);
-    if (wc_curve25519_shared_secret(private_key, &pub_key,
-                                    secret_bytes,
+    if (wc_curve25519_shared_secret(private_key, &pub_key, secret_bytes,
                                     &secret_size) != 0) {
         printf("Failed to generate shared secret!");
         return -1;
@@ -102,17 +100,12 @@ uint8_t *ecc_asymmetric_dec(uint8_t *ciphertext, size_t ciphertext_size,
         return -1;
     }
 
-    if(aes_gcm_dec(ciphertext, ciphertext_size, symmetric_key,
-                iv, auth_tag, additional_data,
-                additional_data_size, plain) != 0) {
-            return -1;
+    if (aes_gcm_dec(ciphertext, ciphertext_size, symmetric_key, iv, auth_tag,
+                    additional_data, additional_data_size, plain) != 0) {
+        return -1;
     }
 
     return 0;
-
-
-
-
 }
 
 int ecc_sign_file_digest() {

@@ -1,5 +1,9 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <wolfssl/wolfcrypt/aes.h>
+
+#define AUTH_TAG_SIZE AES_BLOCK_SIZE
+#define NONCE_SIZE GCM_NONCE_MID_SZ
 
 int aes_gcm_enc(uint8_t *plaintext, size_t plaintext_size, uint8_t *key,
                 uint8_t *iv, uint8_t *additional_data,
