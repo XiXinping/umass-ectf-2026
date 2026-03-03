@@ -15,7 +15,7 @@ int buffer_store_oldfile(slot_t slot, uint8_t* file_buffer, size_t file_size, ui
     // TODO: Buffer overflow/null checks, null checks for fields
 
     file_t* file;
-    filesystem_entry_t* metadata; 
+    const filesystem_entry_t *metadata; 
 
     if(is_slot_in_use(slot)) {
         return -1; // add graceful return logic 
@@ -65,7 +65,7 @@ int buffer_store_newfile(file_t* file, uint8_t* UUID, uint8_t* file_buffer, size
     // uint8_t buffer[file->contents_len + (16 - (file->contents_len % 16))];
     memset(file_buffer, 0, file_size);
 
-    memcpy(buffer, file->contents, file->contents_len);
+    memcpy(file_buffer, file->contents, file->contents_len);
     //offset += file->contents_len;
 
 

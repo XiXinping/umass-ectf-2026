@@ -15,6 +15,15 @@
 
 #include "host_messaging.h"
 
+#include <wolfssl/wolfcrypt/sha256.h>
+
+
+// correct this
+#define HMAC_SIZE 1
+
+byte key[] = "temp key"; // implement actual key retrieval
+
+
 
 /** @brief Read len bytes from UART, acknowledging after every 256 bytes.
  *
@@ -159,12 +168,37 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len) {
 
     // If the header was not ack'd, don't send the message
     if (type != DEBUG_MSG && read_ack(uart_id) != MSG_OK) {
+
         return MSG_NO_ACK;
     }
 
     // If there is data to write, write it
     if (len > 0) {
-        result = write_bytes(uart_id, buf, len, type != DEBUG_MSG);
+
+        // call hmac sign
+
+        // initialize out buf w new len including hash
+        uint8_t final_buf[len + HMAC_SIZE];
+
+        // initialize hmac
+        uint8_t hmac[HMAC_SIZE];
+
+        // copy data to out buf
+        memcpy(final_buf, buf, len);
+        
+        int new_len = len + HMAC_SIZE;
+
+        // create hash
+        if (hmac_sign(final_buf, new_len, hmac) != 0){
+            printf("error with hmac_sign\n");
+            return MSG_SIGN_FAIL;
+        }
+
+        // copy hmac to end of out buf
+        memcpy(final_buf + len, hmac, HMAC_SIZE);
+
+        // write out buf
+        result = write_bytes(uart_id, final_buf, len + HMAC_SIZE, type != DEBUG_MSG);
         // If we still need to ACK the last block (write_bytes does not handle the final ACK)
         if (type != DEBUG_MSG && read_ack(uart_id) != MSG_OK) {
             return MSG_NO_ACK;
@@ -207,6 +241,28 @@ int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len) {
     if (header.cmd != ACK_MSG) {
         write_ack(uart_id);  // ACK the header
         if (header.len && buf != NULL) {
+
+            // call hmac verify
+
+            // initialize hmac buf
+            uint8_t rcv_hmac[HMAC_SIZE];
+            
+            // initialize buffer containing only data and no hmac
+            uint8_t tmp_data[len - HMAC_SIZE];
+
+            // copy only data to temp buf
+            memcpy(tmp_data, buf, len - HMAC_SIZE);
+
+            // copy only hmac 
+            memcpy(rcv_hmac, buf + len - HMAC_SIZE, HMAC_SIZE);
+
+            // check if hashes match
+            if (hmac_verify(tmp_data, len-HMAC_SIZE, rcv_hmac) != 0){
+                printf("Hashes do not match\n");
+                return MSG_NO_AUTH;
+            }
+
+            // read original recieved buf
             if (read_bytes(uart_id, buf, header.len) != MSG_OK) {
                 return MSG_NO_ACK;
             }
@@ -219,3 +275,57 @@ int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len) {
     }
     return MSG_OK;
 }
+
+
+int hmac_sign(uint8_t *data, uint16_t len, uint8_t *out_hmac)
+{
+    Hmac hmac;
+    int ret;
+
+    ret = wc_HmacInit(&hmac, NULL, INVALID_DEVID);
+    if (ret != 0){
+        print("Error creating hmac\n")
+        return ret;
+    }    
+
+    ret = wc_HmacSetKey(&hmac, WC_SHA256, key, sizeof(key));
+    if (ret != 0) return{
+        printf("Error setting key\n");
+        ret;
+    }
+
+    ret = wc_HmacUpdate(&hmac, data, len);
+    if (ret != 0){
+        printf("Error updating hash\n");
+        return ret;
+    }
+
+    ret = wc_HmacFinal(&hmac, out_hmac);
+
+    wc_HmacFree(&hmac);
+    if (ret != 0){
+        printf("Error creating final hash\n");
+    }
+
+    return ret;
+    
+}
+
+int hmac_verify(uint8_t *data,
+                uint16_t len,
+                uint8_t *received_hmac)
+{
+    uint8_t computed[HMAC_SIZE];
+
+    if (hmac_sign(data, len, computed) != 0)
+        return 1;
+
+    // constant-time compare
+    if (ConstantCompare(computed, received_hmac, HMAC_SIZE) != 0)
+        return 1;
+
+    return 0;
+}
+
+
+

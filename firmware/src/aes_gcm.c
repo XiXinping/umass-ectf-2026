@@ -26,6 +26,7 @@
 #include <wolfssl/wolfcrypt/logging.h>
 #include <wolfssl/wolfcrypt/settings.h>
 
+#define HAVE_AESGCM
 // TODO: Buffer memsets to 0 after use
 
 int aes_gcm_enc(uint8_t *plaintext, size_t plaintext_size, uint8_t *key,
@@ -39,14 +40,14 @@ int aes_gcm_enc(uint8_t *plaintext, size_t plaintext_size, uint8_t *key,
 
     memset(auth_tag, 0, sizeof(auth_tag));
 
-    fprintf(stderr, "Encrypt with AES256-GCM\n");
+    printf("Encrypt with AES256-GCM\n");
     /* Initialize AES encryption object. */
     ret = wc_AesInit(&aes_enc, NULL, INVALID_DEVID);
     if (ret == 0) {
         /* Set GCM key into AES encryption object. */
         ret = wc_AesGcmSetKey(&aes_enc, key, AES_256_KEY_SIZE);
         if (ret != 0)
-            fprintf(stderr, "Set Key failed: %d\n", ret);
+            printf("Set Key failed: %d\n", ret);
     }
     if (ret == 0) {
         /* Encrypt data with AES encryption object and get ciphertext and
@@ -56,7 +57,7 @@ int aes_gcm_enc(uint8_t *plaintext, size_t plaintext_size, uint8_t *key,
                                sizeof(auth_tag), additional_data,
                                additional_data_size);
         if (ret != 0)
-            fprintf(stderr, "Encrypt failed: %d\n", ret);
+            printf("Encrypt failed: %d\n", ret);
     }
     if (ret == 0) {
         printf("Ciphertext: ");
@@ -80,7 +81,7 @@ int aes_gcm_dec(uint8_t *ciphertext, size_t ciphertext_size, uint8_t *key,
     size_t i;
 
     if (ret == 0) {
-        fprintf(stderr, "Decrypt with AES256-GCM\n");
+        printf("Decrypt with AES256-GCM\n");
         /* Initialize AES decryption object. */
         ret = wc_AesInit(&aesDec, NULL, INVALID_DEVID);
     }
@@ -88,7 +89,7 @@ int aes_gcm_dec(uint8_t *ciphertext, size_t ciphertext_size, uint8_t *key,
         /* Set GCM key into AES decryption object. */
         ret = wc_AesGcmSetKey(&aesDec, key, AES_256_KEY_SIZE);
         if (ret != 0)
-            fprintf(stderr, "Set Key failed: %d\n", ret);
+            printf("Set Key failed: %d\n", ret);
     }
     if (ret == 0) {
         /* Check authentication tag with ciphertext and decrypt ciphertext with
@@ -98,9 +99,9 @@ int aes_gcm_dec(uint8_t *ciphertext, size_t ciphertext_size, uint8_t *key,
             &aesDec, plaintext_out, ciphertext, ciphertext_size, iv, GCM_NONCE_MID_SZ,
             auth_tag, AES_BLOCK_SIZE, additional_data, additional_data_size); // size of auth_tag is 16 bytes
         if (ret == AES_GCM_AUTH_E)
-            fprintf(stderr, "Authentication failed: %d\n", ret);
+            printf("Authentication failed: %d\n", ret);
         else if (ret != 0)
-            fprintf(stderr, "Decrypt failed: %d\n", ret);
+            printf("Decrypt failed: %d\n", ret);
     }
     if (ret == 0) {
         printf(" Decrypted: ");

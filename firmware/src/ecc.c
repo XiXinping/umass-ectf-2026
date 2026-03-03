@@ -9,9 +9,9 @@
 #include <wolfssl/test.h>
 // Need to fix function, reinitializing the rng
 int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
-                           curve25519_key *public_key, uint8_t additional_data,
+                           curve25519_key *public_key, uint8_t *additional_data,
                            size_t additional_data_size, uint8_t *ciphertext_out,
-                           size_t *ciphertext_size, uint8_t *iv_out,
+                           size_t ciphertext_size, uint8_t *iv_out,
                            uint8_t *auth_tag_out,
                            uint8_t *cipher_public_key_out) {
     int ret;
@@ -60,7 +60,7 @@ int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
     byte iv[GCM_NONCE_MID_SZ];
     gen_random(iv, GCM_NONCE_MID_SZ); // Replace this call with gen_random_block
 
-    if (aes_gcm_encrypt(plaintext, plaintext_size, symmetric_key, iv,
+    if (aes_gcm_enc(plaintext, plaintext_size, symmetric_key, iv,
                         auth_tag_out, additional_data, additional_data_size,
                         ciphertext_out, auth_tag_out) != 0) {
         printf("Unable to encrypt with AES!");
@@ -70,9 +70,8 @@ int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
 }
 
 uint8_t *ecc_asymmetric_dec(uint8_t *ciphertext, size_t ciphertext_size,
-                           curve25519_key *private_key, uint8_t additional_data,
-                           size_t additional_data_size, uint8_t *plain_out,
-                           size_t *plaintext_size, uint8_t *iv,
+                           curve25519_key *private_key, uint8_t *additional_data,
+                           size_t additional_data_size, uint8_t *plain_out, uint8_t *iv,
                            uint8_t *auth_tag,
                            uint8_t *cipher_public_key, size_t cipher_public_key_size) {
     byte plain[ciphertext_size];
@@ -115,36 +114,80 @@ uint8_t *ecc_asymmetric_dec(uint8_t *ciphertext, size_t ciphertext_size,
 
 }
 
-int ecc_sign_file_digest() {
-    ecc_key key;
-    WC_RNG rng;
+int ecc_sign_file_digest(WC_RNG *rng, byte *digest, curve25519_key *ephemeral_private_key, curve25519_key *cipher_public_key) {
+    ecc_key signing_key;
     int ret, sigSz;
+
+    byte pub_key_bytes[32];
+    word32 pub_size = sizeof(pub_size);
+    if (wc_curve25519_export_public_raw(cipher_public_key,
+                                     pub_key_bytes,
+                                     &pub_size) != 0) {
+        printf("Failed to export public curve25519 key!");
+        return -1;
+    };  
+
+    byte priv_key_bytes[32];
+    word32 priv_size = sizeof(priv_size);
+    if (wc_curve25519_export_private_raw(ephemeral_private_key,
+                                     priv_key_bytes,
+                                     &priv_size) != 0) {
+        printf("Failed to export private curve25519 key!");
+        return -1;
+    };
+
+
+    if (wc_ecc_import_private_key(priv_key_bytes, priv_size, pub_key_bytes, pub_size, &signing_key) != 0) {
+        printf("Failed to import ECC key!");
+        return -1;
+    };
+
 
     byte sig[512]; // will hold generated signature
     sigSz = sizeof(sig);
-    byte digest[] = {};              // initialize with message hash };
-    wc_InitRng(&rng);                // initialize rng
-    wc_ecc_init(&key);               // initialize key
-    wc_ecc_make_key(&rng, 32, &key); // make public/private key pair
-    ret = wc_ecc_sign_hash(digest, sizeof(digest), sig, &sigSz, &key);
+    ret = wc_ecc_sign_hash(digest, sizeof(digest), sig, &sigSz, &signing_key);
     if (ret != 0) {
         // error generating message signature
+        printf("Failed to sign file digest!");
     }
+    return 0;
 }
 
-int ecc_verify_file_digest() {
+int ecc_verify_file_digest(byte *sig, word32 sigSize, byte *digest, word32 digestSize, curve25519_key *ephemeral_private_key, curve25519_key *cipher_public_key) {
 
-    ecc_key key;
+    ecc_key signing_key;
     int ret, verified = 0;
 
-    byte sig[1024];   // initialize with received signature };
-    byte digest[] = { // initialize with message hash };
-        // initialize key with received public key
-        ret = wc_ecc_verify_hash(sig, sizeof(sig), digest, sizeof(digest),
-                                 &verified, &key);
+
+    byte pub_key_bytes[32];
+    word32 pub_size = sizeof(pub_size);
+    if (wc_curve25519_export_public_raw(cipher_public_key,
+                                     pub_key_bytes,
+                                     &pub_size) != 0) {
+        printf("Failed to export public curve25519 key!");
+        return -1;
+    };  
+
+    byte priv_key_bytes[32];
+    word32 priv_size = sizeof(priv_size);
+    if (wc_curve25519_export_private_raw(ephemeral_private_key,
+                                     priv_key_bytes,
+                                     &priv_size) != 0) {
+        printf("Failed to export private curve25519 key!");
+        return -1;
+    };
+
+    if (wc_ecc_import_private_key(priv_key_bytes, priv_size, pub_key_bytes, pub_size, &signing_key) != 0) {
+        printf("Failed to import ECC key!");
+        return -1;
+    };
+
+
+    ret = wc_ecc_verify_hash(sig, sigSize, digest, digestSize,
+                                 &verified, &signing_key);
     if (ret != 0) {
-        // error performing verification
+        printf("Failed to verify hash!");
     } else if (verified == 0) {
-        // the signature is invalid
+        printf("Signature is invalid!");
     }
 }

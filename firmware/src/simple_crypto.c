@@ -18,6 +18,7 @@
 #include "security.h"
 #include <stdint.h>
 #include <string.h>
+#include <wolfssl/wolfcrypt/aes.h>
 
 /******************************** FUNCTION PROTOTYPES
  * ********************************/

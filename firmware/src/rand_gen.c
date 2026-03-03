@@ -37,6 +37,7 @@ int trng_gen_seed(uint8_t *output, int size) {
             __WFI();
         }
         */
+    return 0;
 }
 
 int wc_GenerateSeed(OS_Seed *os, byte *output, word32 sz) {
@@ -50,20 +51,22 @@ int init_random(WC_RNG *rng) {
         printf("RNG init failed");
         return -1;
     }
-    return 0
+    return 0;
 }
 
 int free_random(WC_RNG *rng) {
+    int ret;
     ret = wc_FreeRng(rng);
     if (ret != 0) {
         printf("Failed to free RNG");
         return -1;
     }
-    return 0
+    return 0;
 }
 
-int gen_random_block(WC_RNG *rng, uint8_t *output, size_t size) {
+int gen_rand_block(WC_RNG *rng, uint8_t *output, size_t size) {
     
+    int ret;
     ret = wc_RNG_GenerateBlock(rng, output, size);
     if (ret != 0) {
         printf("Generating block failed");
@@ -74,6 +77,7 @@ int gen_random_block(WC_RNG *rng, uint8_t *output, size_t size) {
 
 int gen_random_block(WC_RNG *rng, uint8_t *output, size_t size) {
     
+    int ret;
     ret = wc_RNG_GenerateBlock(rng, output, size);
     if (ret != 0) {
         printf("Generating block failed");
