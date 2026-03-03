@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define ECC_KEY_SIZE ;
+
 // A struct representing a public-private key pair.
 typedef struct {
     // All HSMs have access to the public key for every permission
@@ -47,7 +49,7 @@ typedef enum {
  * @return Returns the raw bytes of the private key if the HSM has permission.
  * Returns NULL otherwise.
  */
-static const uint8_t *get_private_key(int group_id,
+static const uint8_t *get_private_key(uint16_t group_id,
                                       permission_t permission_type);
 /**
  * @brief Get the public key corresponding to a permission for a group.
@@ -56,7 +58,7 @@ static const uint8_t *get_private_key(int group_id,
  * @param permisison_type The kind of permission (read, write, or receive)
  * @return Returns the raw bytes of the public key.
  */
-static const uint8_t *get_public_key(int group_id,
+static const uint8_t *get_public_key(uint16_t group_id,
                                      permission_t permission_type);
 
 static bool permission_allowed(uint16_t group_id, permission_t perm);
