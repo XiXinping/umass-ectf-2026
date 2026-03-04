@@ -49,6 +49,8 @@ typedef enum {
     MSG_BAD_PTR,
     MSG_NO_ACK,
     MSG_BAD_LEN,
+    MSG_SIGN_FAIL,
+    MSG_NO_AUTH,
     // <0 is UART error
 } msg_status_t;
 

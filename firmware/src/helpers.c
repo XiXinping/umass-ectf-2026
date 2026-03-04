@@ -1,7 +1,6 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdio.h>
-#include "system.h"
 #include "simple_flash.h"
 #include "simple_crypto.h"
 #include "host_messaging.h"
@@ -14,7 +13,7 @@ static void secure_zero(void *buf, size_t len) {
     while (len--) *p++ = 0;
 }
 
-static bool constant_time_compare(const uint8_t *a, const uint8_t *b, size_t len) {
+bool constant_time_compare(const uint8_t *a, const uint8_t *b, size_t len) {
     uint8_t diff = 0;
     for (size_t i = 0; i < len; i++) diff |= a[i] ^ b[i];
     return diff == 0;

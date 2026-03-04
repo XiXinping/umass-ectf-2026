@@ -14,14 +14,24 @@
 #include <stdio.h>
 
 #include "host_messaging.h"
+#include "helpers.h"
 
 #include <wolfssl/wolfcrypt/sha256.h>
+#include <wolfssl/wolfcrypt/hmac.h>
 
 
 // correct this
-#define HMAC_SIZE 1
+#define HMAC_SIZE WC_HMAC_BLOCK_SIZE
 
 byte key[] = "temp key"; // implement actual key retrieval
+
+
+int hmac_verify(uint8_t *data,
+                uint16_t len,
+                uint8_t *received_hmac);
+
+int hmac_sign(uint8_t *data, uint16_t len, uint8_t *out_hmac);
+
 
 
 
@@ -248,16 +258,16 @@ int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len) {
             uint8_t rcv_hmac[HMAC_SIZE];
             
             // initialize buffer containing only data and no hmac
-            uint8_t tmp_data[len - HMAC_SIZE];
+            uint8_t tmp_data[*len - HMAC_SIZE];
 
             // copy only data to temp buf
-            memcpy(tmp_data, buf, len - HMAC_SIZE);
+            memcpy(tmp_data, buf, *len - HMAC_SIZE);
 
             // copy only hmac 
-            memcpy(rcv_hmac, buf + len - HMAC_SIZE, HMAC_SIZE);
+            memcpy(rcv_hmac, buf + *len - HMAC_SIZE, HMAC_SIZE);
 
             // check if hashes match
-            if (hmac_verify(tmp_data, len-HMAC_SIZE, rcv_hmac) != 0){
+            if (hmac_verify(tmp_data, *len - HMAC_SIZE, rcv_hmac) != 0){
                 printf("Hashes do not match\n");
                 return MSG_NO_AUTH;
             }
@@ -284,14 +294,14 @@ int hmac_sign(uint8_t *data, uint16_t len, uint8_t *out_hmac)
 
     ret = wc_HmacInit(&hmac, NULL, INVALID_DEVID);
     if (ret != 0){
-        print("Error creating hmac\n")
+        printf("Error creating hmac\n");
         return ret;
     }    
 
     ret = wc_HmacSetKey(&hmac, WC_SHA256, key, sizeof(key));
-    if (ret != 0) return{
+    if (ret != 0){
         printf("Error setting key\n");
-        ret;
+        return ret;
     }
 
     ret = wc_HmacUpdate(&hmac, data, len);
@@ -321,7 +331,7 @@ int hmac_verify(uint8_t *data,
         return 1;
 
     // constant-time compare
-    if (ConstantCompare(computed, received_hmac, HMAC_SIZE) != 0)
+    if (constant_time_compare(computed, received_hmac, HMAC_SIZE) != 0)
         return 1;
 
     return 0;

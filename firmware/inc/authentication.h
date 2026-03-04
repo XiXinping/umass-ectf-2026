@@ -1,6 +1,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include "permission.h"
+#include <security.h>
 
 #define PIN_LENGTH 6
 #define PIN_SALT_SIZE 16
@@ -20,8 +22,28 @@
  * Flash regions intended for protected storage.
  * Platform should map these ranges to the most restrictive policy available.
  */
+
+ 
 #define SECURITY_FLASH_REGION_TIME_ADDR 0x00002000U
 #define SECURITY_FLASH_REGION_CRYPTO_ADDR 0x00003000U
+
+#define TIMESTAMP_STORAGE_MAGIC 0x54534D50U /* TSMP */
+#define CRYPTO_STORAGE_MAGIC 0x43525950U    /* CRYP */
+#define PIN_STORAGE_MAGIC 0x50494E53U       /* PINS */
+#define TIMESTAMP_DRIFT_TOLERANCE_MS 1000U
+
+#define SECURITY_FLASH_REGION_PIN_ADDR     0x00000000U
+#define SECURITY_FLASH_REGION_PERMS_ADDR   0x00001000U
+#define SECURITY_FLASH_REGION_TIME_ADDR    0x00002000U
+#define SECURITY_FLASH_REGION_CRYPTO_ADDR  0x00003000U
+
+#define TIME_FLASH_ADDR SECURITY_FLASH_REGION_TIME_ADDR
+#define CRYPTO_FLASH_ADDR SECURITY_FLASH_REGION_CRYPTO_ADDR
+
+#define PIN_FLASH_ADDR      SECURITY_FLASH_REGION_PIN_ADDR
+#define PERMS_FLASH_ADDR    SECURITY_FLASH_REGION_PERMS_ADDR
+
+
 
 /*
  * Optional platform hooks to lock/check clock config after boot.

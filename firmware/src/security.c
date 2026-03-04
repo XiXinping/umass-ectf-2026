@@ -13,6 +13,7 @@
  */
 #include "security.h"
 #include "host_messaging.h"
+#include "permission.h"
 
 bool check_pin(unsigned char *pin) {
     print_debug("Checking PIN\n");
@@ -39,18 +40,18 @@ static const group_permission_t *permission_entry(uint16_t group_id) {
     return NULL;
 }
 
-static bool permission_allowed(uint16_t group_id, permission_enum_t perm) {
+static bool permission_allowed(uint16_t group_id, permission_t perm) {
     const group_permission_t *entry = permission_entry(group_id);
     if (entry == NULL)
         return false;
 
     switch (perm) {
     case PERM_READ:
-        return entry->read;
+        return entry->read_perm;
     case PERM_WRITE:
-        return entry->write;
+        return entry->write_perm;
     case PERM_RECEIVE:
-        return entry->receive;
+        return entry->receive_perm;
     default:
         return false;
     }
