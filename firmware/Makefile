@@ -1,6 +1,8 @@
-MSPM0_SDK_INSTALL_DIR ?= $(abspath ../../../../../..)
+# MSPM0_SDK_INSTALL_DIR ?= $(abspath ../../../../../..)
+MSPM0_SDK_INSTALL_DIR = $(HOME)/.ti/mspm0_sdk_2_09_00_01
+TICLANG_ARMCOMPILER = $(HOME)/.ti/ti-cgt-armllvm_5.0.0.STS
 
-include $(MSPM0_SDK_INSTALL_DIR)/tools/imports_mak/imports.mak.linux
+# include $(MSPM0_SDK_INSTALL_DIR)/tools/imports_mak/imports.mak.linux
 
 CC = "$(TICLANG_ARMCOMPILER)/bin/tiarmclang"
 LNK = "$(TICLANG_ARMCOMPILER)/bin/tiarmclang"
@@ -62,7 +64,8 @@ CFLAGS += -I.. \
     -mcpu=cortex-m0plus \
     -march=thumbv6m \
     -mfloat-abi=soft \
-    -mthumb
+    -mthumb \
+    -ferror-limit=500
 
 LFLAGS += "-l$(MSPM0_SDK_INSTALL_DIR)/source/ti/drivers/lib/ticlang/m0p/drivers_mspm0l122x_l222x.a" \
     "-l$(MSPM0_SDK_INSTALL_DIR)/kernel/nortos/lib/ticlang/m0p/nortos_mspm0l122x_l222x.a" \

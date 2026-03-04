@@ -40,6 +40,7 @@
 #ifndef ti_msp_dl_config_h
 #define ti_msp_dl_config_h
 
+#define DeviceFamily_MSPM0L222X
 #define CONFIG_MSPM0L222X
 #define CONFIG_MSPM0L2228
 

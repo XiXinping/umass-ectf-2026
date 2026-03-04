@@ -3,7 +3,6 @@
 #include "permission.h"
 #include "simple_flash.h"
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 //
 // Read a protected file from persistent storage. Does not perform any

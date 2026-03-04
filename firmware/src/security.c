@@ -12,7 +12,13 @@
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
 #include "security.h"
+#include "authentication.h"
+#include "crypto.h"
 #include "host_messaging.h"
+#include "permission.h"
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 bool check_pin(unsigned char *pin) {
     print_debug("Checking PIN\n");
@@ -23,45 +29,20 @@ bool check_pin(unsigned char *pin) {
     // requirements.
     return true;
 }
-
-static const group_permission_t *permission_entry(uint16_t group_id) {
-    if (group_id >= MAX_PERMS)
-        return NULL;
-
-    const group_permission_t *entry = &g_permissions[group_id];
-    if (entry->group_id == group_id)
-        return entry;
-
-    for (int i = 0; i < MAX_PERMS; i++) {
-        if (g_permissions[i].group_id == group_id)
-            return &g_permissions[i];
-    }
-    return NULL;
-}
-
-static bool permission_allowed(uint16_t group_id, permission_enum_t perm) {
-    const group_permission_t *entry = permission_entry(group_id);
-    if (entry == NULL)
-        return false;
-
-    switch (perm) {
-    case PERM_READ:
-        return entry->read;
-    case PERM_WRITE:
-        return entry->write;
-    case PERM_RECEIVE:
-        return entry->receive;
-    default:
-        return false;
-    }
-}
+extern pin_storage_t g_pin_data;
+extern bool g_authenticated;
+extern uint64_t g_session_expiration_ms;
+extern uint64_t g_last_time_ms;
+extern timestamp_storage_t g_time_data;
+extern crypto_storage_t g_crypto_data;
+extern bool g_time_anomaly_detected;
 
 void security_init(void) {
     uint64_t now;
     uint64_t tolerated_now;
 
     load_pin();
-    load_permissions();
+    // load_permissions();
     load_timestamp_state();
     load_crypto_state();
 

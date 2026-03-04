@@ -152,7 +152,9 @@ def secrets_to_c_header(
                         f"                .private_key = {{\n{bytes_to_c_array(priv)}\n                }},\n"
                     )
                 else:
-                    f.write("                .private_key = NULL,\n")
+                    f.write(
+                        f"                .private_key = {{\n{bytes_to_c_array(null_key)}}},\n"
+                    )
                 f.write("            },\n")
 
             f.write("        },\n")

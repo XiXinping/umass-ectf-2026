@@ -1,16 +1,18 @@
 #include "authentication.h"
+#include "crypto.h"
 #include "security.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
-static pin_storage_t g_pin_data;
-static bool g_authenticated = false;
-static uint64_t g_session_expiration_ms = 0;
-static uint64_t g_last_time_ms = 0;
-static timestamp_storage_t g_time_data;
-static bool g_time_anomaly_detected = false;
+pin_storage_t g_pin_data;
+bool g_authenticated = false;
+uint64_t g_session_expiration_ms = 0;
+uint64_t g_last_time_ms = 0;
+timestamp_storage_t g_time_data;
+crypto_storage_t g_crypto_data;
+bool g_time_anomaly_detected = false;
 
 // PIN Auth/Storage/Update
 

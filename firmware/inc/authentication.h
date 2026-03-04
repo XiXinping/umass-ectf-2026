@@ -1,3 +1,4 @@
+#include "security.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -56,6 +57,15 @@ typedef struct {
                        // tampered with
 } timestamp_storage_t;
 
+/* Load the PIN from persistent storage */
+static void load_pin();
+
+extern uint64_t platform_get_time_ms(void);
+/* Load the timestamp state from persistent storage */
+static void load_timestamp_state(void);
+
+static void load_crypto_state(void);
+
 /* Provision a new PIN (salt + PBKDF2 hash) */
 security_status_t provision_pin(const uint8_t *pin, size_t len);
 
@@ -68,9 +78,6 @@ bool verify_auth(void);
 
 /* Logout the current session */
 void logout(void);
-
-/* Check if HSM has permission for a specific action */
-bool validate_permission(uint16_t group_id, permission_t perm);
 
 /* Check if penalty delay is active */
 bool penalty_active(void);
