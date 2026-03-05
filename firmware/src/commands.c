@@ -13,6 +13,7 @@
  */
 
 #include "commands.h"
+#include "authentication.h"
 #include "filesystem.h"
 #include "host_messaging.h"
 
@@ -20,7 +21,7 @@
 #define HOST_LIST_CMD_LEN PIN_LENGTH
 #define HOST_READ_CMD_LEN (PIN_LENGTH + 1U)
 #define HOST_WRITE_MIN_CMD_LEN                                                 \
-    (PIN_LENGTH + 1U + 2U + HSM_FILE_NAME_SIZE + HSM_FILE_UUID_SIZE + 2U)
+    (PIN_LENGTH + 1U + 2U + FILE_NAME_SIZE + FILE_UUID_SIZE + 2U)
 #define HOST_INTERROGATE_CMD_LEN PIN_LENGTH
 #define HOST_RECEIVE_CMD_LEN (PIN_LENGTH + 1U + 1U)
 
@@ -114,12 +115,12 @@ int read(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-
     // copy structure of the persistent file
     memcpy(file_info.name, &curr_file.name, strlen(curr_file.name));
-    memcpy(
-        file_info.contents, original_content,
-        curr_file.contents_len); // changed from curr file to decrypted buffer
+    // memcpy(
+    //     file_info.contents, original_content,
+    //     curr_file.contents_len); // changed from curr file to decrypted
+    //     buffer
 
     if (!validate_permission(curr_file.group_id, PERM_READ)) {
         print_error("Invalid permission");
@@ -127,7 +128,7 @@ int read(uint16_t pkt_len, uint8_t *buf) {
     }
 
     // write a success message with the file information
-    pkt_len_t length = MAX_NAME_SIZE + curr_file.contents_len;
+    pkt_len_t length = FILE_NAME_SIZE + curr_file.contents_len;
     write_packet(CONTROL_INTERFACE, READ_MSG, &file_info, length);
     return 0;
 }
@@ -157,8 +158,8 @@ int write(uint16_t pkt_len, uint8_t *buf) {
     create_file(&curr_file, command->group_id, command->name,
                 command->contents_len, command->contents);
 
-    memset(0, curr_file->contents, commands->contents_len);
-    curr_file->contents = aes_buffer;
+    memset(curr_file.contents, 0, curr_file.contents_len);
+    // curr_file.contents = aes_buffer;
 
     // Store the file persistently
     if (write_file(command->slot, &curr_file, command->uuid) < 0) {
@@ -197,8 +198,8 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
 
     // prep request to neighbor
     request.slot = command->read_slot;
-    memcpy(&request.permissions, &global_permissions,
-           sizeof(group_permission_t) * MAX_PERMS);
+    // memcpy(&request.permissions, &global_permissions,
+    //        sizeof(group_permission_t) * MAX_PERMS);
 
     // request the file from the neighboring device
     write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, (void *)&request,
@@ -317,7 +318,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
             return -1;
         }
 
-        memcpy(&recv_resp.uuid, &metadata->uuid, UUID_SIZE);
+        memcpy(&recv_resp.uuid, &metadata->uuid, FILE_UUID_SIZE);
 
         // send the file to the neighbor hsm
         write_length = sizeof(receive_response_t);
@@ -332,7 +333,7 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
     return 0;
 }
-bool security_process_host_command(uint8_t opcode, const uint8_t *body,
+bool security_process_host_command(hsm_opcode_t opcode, const uint8_t *body,
                                    uint16_t body_len, const hsm_file_ops_t *ops,
                                    uint8_t *response_opcode,
                                    uint8_t *response_body,
@@ -414,17 +415,17 @@ bool security_process_host_command(uint8_t opcode, const uint8_t *body,
     return true;
 }
 
-static bool serialize_file_list(const hsm_file_metadata_t *files,
-                                uint32_t count, uint8_t *out, uint16_t out_cap,
+static bool serialize_file_list(const file_metadata_t *files, uint32_t count,
+                                uint8_t *out, uint16_t out_cap,
                                 uint16_t *out_len) {
     uint32_t i;
-    uint32_t per_entry = (uint32_t)(1U + 2U + HSM_FILE_NAME_SIZE);
+    uint32_t per_entry = (uint32_t)(1U + 2U + FILE_NAME_SIZE);
     uint32_t payload = 0U;
     uint32_t needed = 0U;
 
     if (files == NULL || out == NULL || out_len == NULL)
         return false;
-    if (count > HSM_MAX_FILES)
+    if (count > MAX_FILE_COUNT)
         return false;
     if (count != 0U && per_entry > (UINT32_MAX / count))
         return false;
@@ -438,10 +439,10 @@ static bool serialize_file_list(const hsm_file_metadata_t *files,
     write_le32(out, count);
 
     for (i = 0; i < count; i++) {
-        uint32_t base = 4U + i * (1U + 2U + HSM_FILE_NAME_SIZE);
+        uint32_t base = 4U + i * (1U + 2U + FILE_NAME_SIZE);
         out[base] = files[i].slot;
         write_le16(&out[base + 1U], files[i].group_id);
-        memcpy(&out[base + 3U], files[i].name, HSM_FILE_NAME_SIZE);
+        memcpy(&out[base + 3U], files[i].name, FILE_NAME_SIZE);
     }
 
     *out_len = (uint16_t)needed;
@@ -452,8 +453,8 @@ static bool handle_list_cmd(const uint8_t *body, uint16_t body_len,
                             const hsm_file_ops_t *ops, uint8_t *response_body,
                             uint16_t response_capacity, uint16_t *response_len,
                             uint8_t *err) {
-    hsm_file_metadata_t files[HSM_MAX_FILES];
-    uint32_t count = HSM_MAX_FILES;
+    file_metadata_t files[MAX_FILE_COUNT];
+    uint32_t count = MAX_FILE_COUNT;
 
     if (response_body == NULL || response_len == NULL || err == NULL) {
         return false;
@@ -473,7 +474,7 @@ static bool handle_list_cmd(const uint8_t *body, uint16_t body_len,
         *err = 0x71;
         return false;
     }
-    if (count > HSM_MAX_FILES) {
+    if (count > MAX_FILE_COUNT) {
         *err = 0x72;
         return false;
     }
@@ -492,7 +493,7 @@ static bool handle_read_cmd(const uint8_t *body, uint16_t body_len,
                             uint16_t response_capacity, uint16_t *response_len,
                             uint8_t *err) {
     uint8_t slot;
-    hsm_file_record_t file;
+    file_t file;
     uint32_t needed;
 
     if (response_body == NULL || response_len == NULL || err == NULL) {
@@ -510,7 +511,7 @@ static bool handle_read_cmd(const uint8_t *body, uint16_t body_len,
     }
 
     slot = body[PIN_LENGTH];
-    if (slot >= HSM_MAX_FILES) {
+    if (slot >= MAX_FILE_COUNT) {
         *err = 0x85;
         return false;
     }
@@ -519,20 +520,20 @@ static bool handle_read_cmd(const uint8_t *body, uint16_t body_len,
         return false;
     }
 
-    if (!security_validate_permission(file.group_id, PERM_READ)) {
+    if (!validate_permission(file.group_id, PERM_READ)) {
         *err = 0x76;
         return false;
     }
 
-    needed = (uint32_t)HSM_FILE_NAME_SIZE + file.contents_len;
+    needed = (uint32_t)FILE_NAME_SIZE + file.contents_len;
     if (needed > response_capacity) {
         *err = 0x77;
         return false;
     }
 
-    memcpy(response_body, file.name, HSM_FILE_NAME_SIZE);
+    memcpy(response_body, file.name, FILE_NAME_SIZE);
     if (file.contents_len > 0 && file.contents != NULL) {
-        memcpy(response_body + HSM_FILE_NAME_SIZE, file.contents,
+        memcpy(response_body + FILE_NAME_SIZE, file.contents,
                file.contents_len);
     }
     *response_len = (uint16_t)needed;
@@ -540,7 +541,7 @@ static bool handle_read_cmd(const uint8_t *body, uint16_t body_len,
 }
 
 static bool parse_write_cmd(const uint8_t *body, uint16_t body_len,
-                            hsm_file_record_t *file, uint8_t *err) {
+                            file_t *file, uint8_t *err) {
     uint32_t fixed_len = (uint32_t)HOST_WRITE_MIN_CMD_LEN;
     uint32_t expected_len;
     uint16_t contents_len;
@@ -555,17 +556,16 @@ static bool parse_write_cmd(const uint8_t *body, uint16_t body_len,
     }
 
     file->slot = body[PIN_LENGTH];
-    if (file->slot >= HSM_MAX_FILES) {
+    if (file->slot >= MAX_FILE_COUNT) {
         *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
         return false;
     }
     file->group_id = read_le16(&body[PIN_LENGTH + 1U]);
-    memcpy(file->name, &body[PIN_LENGTH + 3U], HSM_FILE_NAME_SIZE);
-    memcpy(file->uuid, &body[PIN_LENGTH + 3U + HSM_FILE_NAME_SIZE],
-           HSM_FILE_UUID_SIZE);
+    memcpy(file->name, &body[PIN_LENGTH + 3U], FILE_NAME_SIZE);
+    memcpy(file->uuid, &body[PIN_LENGTH + 3U + FILE_NAME_SIZE], FILE_UUID_SIZE);
 
-    contents_len = read_le16(
-        &body[PIN_LENGTH + 3U + HSM_FILE_NAME_SIZE + HSM_FILE_UUID_SIZE]);
+    contents_len =
+        read_le16(&body[PIN_LENGTH + 3U + FILE_NAME_SIZE + FILE_UUID_SIZE]);
     if (!checked_add_u32(fixed_len, (uint32_t)contents_len, &expected_len)) {
         *err = (uint8_t)SECURITY_ERR_BUFFER;
         return false;
@@ -583,7 +583,7 @@ static bool parse_write_cmd(const uint8_t *body, uint16_t body_len,
 static bool handle_write_cmd(const uint8_t *body, uint16_t body_len,
                              const hsm_file_ops_t *ops, uint16_t *response_len,
                              uint8_t *err) {
-    hsm_file_record_t file;
+    file_t file;
 
     if (response_len == NULL || err == NULL)
         return false;
@@ -596,7 +596,7 @@ static bool handle_write_cmd(const uint8_t *body, uint16_t body_len,
     if (!parse_write_cmd(body, body_len, &file, err))
         return false;
 
-    if (!security_validate_permission(file.group_id, PERM_WRITE)) {
+    if (!validate_permission(file.group_id, PERM_WRITE)) {
         *err = 0x79;
         return false;
     }
@@ -640,9 +640,9 @@ static bool handle_interrogate_cmd(const uint8_t *body, uint16_t body_len,
                                    uint8_t *response_body,
                                    uint16_t response_capacity,
                                    uint16_t *response_len, uint8_t *err) {
-    hsm_file_metadata_t all_files[HSM_MAX_FILES];
-    hsm_file_metadata_t filtered_files[HSM_MAX_FILES];
-    uint32_t total = HSM_MAX_FILES;
+    file_metadata_t all_files[MAX_FILE_COUNT];
+    file_metadata_t filtered_files[MAX_FILE_COUNT];
+    uint32_t total = MAX_FILE_COUNT;
     uint32_t filtered = 0;
     uint32_t i;
 
@@ -664,13 +664,13 @@ static bool handle_interrogate_cmd(const uint8_t *body, uint16_t body_len,
         *err = 0x7E;
         return false;
     }
-    if (total > HSM_MAX_FILES) {
+    if (total > MAX_FILE_COUNT) {
         *err = 0x7F;
         return false;
     }
 
     for (i = 0; i < total; i++) {
-        if (security_validate_permission(all_files[i].group_id, PERM_RECEIVE)) {
+        if (validate_permission(all_files[i].group_id, PERM_RECEIVE)) {
             filtered_files[filtered++] = all_files[i];
         }
     }
@@ -689,7 +689,7 @@ static bool handle_receive_cmd(const uint8_t *body, uint16_t body_len,
                                uint16_t *response_len, uint8_t *err) {
     uint8_t read_slot;
     uint8_t write_slot;
-    hsm_file_record_t file;
+    file_t file;
 
     if (response_len == NULL || err == NULL)
         return false;
@@ -708,7 +708,7 @@ static bool handle_receive_cmd(const uint8_t *body, uint16_t body_len,
 
     read_slot = body[PIN_LENGTH];
     write_slot = body[PIN_LENGTH + 1U];
-    if (read_slot >= HSM_MAX_FILES || write_slot >= HSM_MAX_FILES) {
+    if (read_slot >= MAX_FILE_COUNT || write_slot >= MAX_FILE_COUNT) {
         *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
         return false;
     }
@@ -718,7 +718,7 @@ static bool handle_receive_cmd(const uint8_t *body, uint16_t body_len,
         return false;
     }
 
-    if (!security_validate_permission(file.group_id, PERM_RECEIVE)) {
+    if (!validate_permission(file.group_id, PERM_RECEIVE)) {
         *err = 0x83;
         return false;
     }

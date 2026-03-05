@@ -73,6 +73,9 @@ security_status_t provision_pin(const uint8_t *pin, size_t len);
  * max retries */
 security_status_t verify_pin(const uint8_t *pin, size_t len);
 
+static bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
+                                     uint8_t *err);
+
 /* Check if current session is authenticated */
 bool verify_auth(void);
 
