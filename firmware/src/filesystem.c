@@ -84,7 +84,7 @@ int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
     flash_addr = FILE_START_PAGE_FROM_SLOT(slot);
     length = FILE_TOTAL_SIZE(src->contents_len);
     // Update the FAT for the new file
-    memcpy(&FILE_ALLOCATION_TABLE[slot].uuid, uuid, UUID_SIZE);
+    memcpy(&FILE_ALLOCATION_TABLE[slot].uuid, uuid, FILE_UUID_SIZE);
     FILE_ALLOCATION_TABLE[slot].flash_addr = flash_addr;
     FILE_ALLOCATION_TABLE[slot].length = length;
     store_fat();

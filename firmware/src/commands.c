@@ -15,7 +15,9 @@
 #include "commands.h"
 #include "authentication.h"
 #include "filesystem.h"
+#include "helpers.h"
 #include "host_messaging.h"
+#include "permission.h"
 
 /* Host message command lengths */
 #define HOST_LIST_CMD_LEN PIN_LENGTH
@@ -333,87 +335,87 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
     write_packet(CONTROL_INTERFACE, LISTEN_MSG, NULL, 0);
     return 0;
 }
-bool security_process_host_command(hsm_opcode_t opcode, const uint8_t *body,
-                                   uint16_t body_len, const hsm_file_ops_t *ops,
-                                   uint8_t *response_opcode,
-                                   uint8_t *response_body,
-                                   uint16_t response_capacity,
-                                   uint16_t *response_len) {
-    bool ok = false;
-    uint8_t err = 0xFF;
-    uint16_t out_len = 0;
-    uint16_t empty_len = 0;
-
-    if (response_opcode == NULL || response_body == NULL ||
-        response_len == NULL)
-        return false;
-    if (body_len > 0U && body == NULL)
-        return false;
-    if (g_time_anomaly_detected) {
-        if (response_capacity < 1U)
-            return false;
-        *response_opcode = HSM_OPCODE_ERROR;
-        response_body[0] = (uint8_t)SECURITY_ERR_TIME_ANOMALY;
-        *response_len = 1U;
-        return true;
-    }
-
-    switch (opcode) {
-    case HSM_OPCODE_LIST:
-        ok = handle_list_cmd(body, body_len, ops, response_body,
-                             response_capacity, &out_len, &err);
-        break;
-
-    case HSM_OPCODE_READ:
-        ok = handle_read_cmd(body, body_len, ops, response_body,
-                             response_capacity, &out_len, &err);
-        break;
-
-    case HSM_OPCODE_WRITE:
-        ok = handle_write_cmd(body, body_len, ops, &empty_len, &err);
-        out_len = empty_len;
-        break;
-
-    case HSM_OPCODE_LISTEN:
-        ok = handle_listen_cmd(body, body_len, ops, &empty_len, &err);
-        out_len = empty_len;
-        break;
-
-    case HSM_OPCODE_INTERROGATE:
-        ok = handle_interrogate_cmd(body, body_len, ops, response_body,
-                                    response_capacity, &out_len, &err);
-        break;
-
-    case HSM_OPCODE_RECEIVE:
-        ok = handle_receive_cmd(body, body_len, ops, &empty_len, &err);
-        out_len = empty_len;
-        break;
-
-    default:
-        ok = false;
-        err = 0xFE;
-        break;
-    }
-
-    if (!ok) {
-        *response_opcode = HSM_OPCODE_ERROR;
-        if (response_capacity < 1U)
-            return false;
-        response_body[0] = err;
-        *response_len = 1U;
-#if SECURITY_REQUIRE_PIN_EACH_COMMAND
-        security_logout();
-#endif
-        return true;
-    }
-
-    *response_opcode = opcode;
-    *response_len = out_len;
-#if SECURITY_REQUIRE_PIN_EACH_COMMAND
-    security_logout();
-#endif
-    return true;
-}
+// bool security_process_host_command(hsm_opcode_t opcode, const uint8_t *body,
+//                                    uint16_t body_len, const hsm_file_ops_t
+//                                    *ops, uint8_t *response_opcode, uint8_t
+//                                    *response_body, uint16_t
+//                                    response_capacity, uint16_t *response_len)
+//                                    {
+//     bool ok = false;
+//     uint8_t err = 0xFF;
+//     uint16_t out_len = 0;
+//     uint16_t empty_len = 0;
+//
+//     if (response_opcode == NULL || response_body == NULL ||
+//         response_len == NULL)
+//         return false;
+//     if (body_len > 0U && body == NULL)
+//         return false;
+//     if (g_time_anomaly_detected) {
+//         if (response_capacity < 1U)
+//             return false;
+//         *response_opcode = HSM_OPCODE_ERROR;
+//         response_body[0] = (uint8_t)SECURITY_ERR_TIME_ANOMALY;
+//         *response_len = 1U;
+//         return true;
+//     }
+//
+//     switch (opcode) {
+//     case HSM_OPCODE_LIST:
+//         ok = handle_list_cmd(body, body_len, ops, response_body,
+//                              response_capacity, &out_len, &err);
+//         break;
+//
+//     case HSM_OPCODE_READ:
+//         ok = handle_read_cmd(body, body_len, ops, response_body,
+//                              response_capacity, &out_len, &err);
+//         break;
+//
+//     case HSM_OPCODE_WRITE:
+//         ok = handle_write_cmd(body, body_len, ops, &empty_len, &err);
+//         out_len = empty_len;
+//         break;
+//
+//     case HSM_OPCODE_LISTEN:
+//         ok = handle_listen_cmd(body, body_len, ops, &empty_len, &err);
+//         out_len = empty_len;
+//         break;
+//
+//     case HSM_OPCODE_INTERROGATE:
+//         ok = handle_interrogate_cmd(body, body_len, ops, response_body,
+//                                     response_capacity, &out_len, &err);
+//         break;
+//
+//     case HSM_OPCODE_RECEIVE:
+//         ok = handle_receive_cmd(body, body_len, ops, &empty_len, &err);
+//         out_len = empty_len;
+//         break;
+//
+//     default:
+//         ok = false;
+//         err = 0xFE;
+//         break;
+//     }
+//
+//     if (!ok) {
+//         *response_opcode = HSM_OPCODE_ERROR;
+//         if (response_capacity < 1U)
+//             return false;
+//         response_body[0] = err;
+//         *response_len = 1U;
+// #if SECURITY_REQUIRE_PIN_EACH_COMMAND
+//         security_logout();
+// #endif
+//         return true;
+//     }
+//
+//     *response_opcode = opcode;
+//     *response_len = out_len;
+// #if SECURITY_REQUIRE_PIN_EACH_COMMAND
+//     security_logout();
+// #endif
+//     return true;
+// }
 
 static bool serialize_file_list(const file_metadata_t *files, uint32_t count,
                                 uint8_t *out, uint16_t out_cap,
@@ -449,286 +451,287 @@ static bool serialize_file_list(const file_metadata_t *files, uint32_t count,
     return true;
 }
 
-static bool handle_list_cmd(const uint8_t *body, uint16_t body_len,
-                            const hsm_file_ops_t *ops, uint8_t *response_body,
-                            uint16_t response_capacity, uint16_t *response_len,
-                            uint8_t *err) {
-    file_metadata_t files[MAX_FILE_COUNT];
-    uint32_t count = MAX_FILE_COUNT;
+// static bool handle_list_cmd(const uint8_t *body, uint16_t body_len,
+//                             const hsm_file_ops_t *ops, uint8_t
+//                             *response_body, uint16_t response_capacity,
+//                             uint16_t *response_len, uint8_t *err) {
+//     file_metadata_t files[MAX_FILE_COUNT];
+//     uint32_t count = MAX_FILE_COUNT;
+//
+//     if (response_body == NULL || response_len == NULL || err == NULL) {
+//         return false;
+//     }
+//     if (body_len != HOST_LIST_CMD_LEN) {
+//         *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
+//         return false;
+//     }
+//     if (!authenticate_request_pin(body, body_len, err))
+//         return false;
+//     if (ops == NULL || ops->list_local_files == NULL) {
+//         *err = 0x70;
+//         return false;
+//     }
+//
+//     if (!ops->list_local_files(files, &count)) {
+//         *err = 0x71;
+//         return false;
+//     }
+//     if (count > MAX_FILE_COUNT) {
+//         *err = 0x72;
+//         return false;
+//     }
+//
+//     if (!serialize_file_list(files, count, response_body, response_capacity,
+//                              response_len)) {
+//         *err = 0x73;
+//         return false;
+//     }
+//
+//     return true;
+// }
+//
+// static bool handle_read_cmd(const uint8_t *body, uint16_t body_len,
+//                             const hsm_file_ops_t *ops, uint8_t
+//                             *response_body, uint16_t response_capacity,
+//                             uint16_t *response_len, uint8_t *err) {
+//     uint8_t slot;
+//     file_t file;
+//     uint32_t needed;
+//
+//     if (response_body == NULL || response_len == NULL || err == NULL) {
+//         return false;
+//     }
+//     if (body_len != HOST_READ_CMD_LEN) {
+//         *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
+//         return false;
+//     }
+//     if (!authenticate_request_pin(body, body_len, err))
+//         return false;
+//     if (ops == NULL || ops->read_local_file == NULL) {
+//         *err = 0x74;
+//         return false;
+//     }
+//
+//     slot = body[PIN_LENGTH];
+//     if (slot >= MAX_FILE_COUNT) {
+//         *err = 0x85;
+//         return false;
+//     }
+//     if (!ops->read_local_file(slot, &file)) {
+//         *err = 0x75;
+//         return false;
+//     }
+//
+//     if (!validate_permission(file.group_id, PERM_READ)) {
+//         *err = 0x76;
+//         return false;
+//     }
+//
+//     needed = (uint32_t)FILE_NAME_SIZE + file.contents_len;
+//     if (needed > response_capacity) {
+//         *err = 0x77;
+//         return false;
+//     }
+//
+//     memcpy(response_body, file.name, FILE_NAME_SIZE);
+//     if (file.contents_len > 0 && file.contents != NULL) {
+//         memcpy(response_body + FILE_NAME_SIZE, file.contents,
+//                file.contents_len);
+//     }
+//     *response_len = (uint16_t)needed;
+//     return true;
+// }
 
-    if (response_body == NULL || response_len == NULL || err == NULL) {
-        return false;
-    }
-    if (body_len != HOST_LIST_CMD_LEN) {
-        *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
-        return false;
-    }
-    if (!authenticate_request_pin(body, body_len, err))
-        return false;
-    if (ops == NULL || ops->list_local_files == NULL) {
-        *err = 0x70;
-        return false;
-    }
+// static bool parse_write_cmd(const uint8_t *body, uint16_t body_len,
+//                             file_t *file, uint8_t *err) {
+//     uint32_t fixed_len = (uint32_t)HOST_WRITE_MIN_CMD_LEN;
+//     uint32_t expected_len;
+//     uint16_t contents_len;
+//
+//     if (body == NULL || file == NULL || err == NULL) {
+//         return false;
+//     }
+//
+//     if (body_len < HOST_WRITE_MIN_CMD_LEN) {
+//         *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
+//         return false;
+//     }
+//
+//     file->slot = body[PIN_LENGTH];
+//     if (file->slot >= MAX_FILE_COUNT) {
+//         *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
+//         return false;
+//     }
+//     file->group_id = read_le16(&body[PIN_LENGTH + 1U]);
+//     memcpy(file->name, &body[PIN_LENGTH + 3U], FILE_NAME_SIZE);
+//     memcpy(file->uuid, &body[PIN_LENGTH + 3U + FILE_NAME_SIZE],
+//     FILE_UUID_SIZE);
+//
+//     contents_len =
+//         read_le16(&body[PIN_LENGTH + 3U + FILE_NAME_SIZE + FILE_UUID_SIZE]);
+//     if (!checked_add_u32(fixed_len, (uint32_t)contents_len, &expected_len)) {
+//         *err = (uint8_t)SECURITY_ERR_BUFFER;
+//         return false;
+//     }
+//     if (expected_len > UINT16_MAX || body_len != (uint16_t)expected_len) {
+//         *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
+//         return false;
+//     }
+//
+//     file->contents_len = contents_len;
+//     file->contents = &body[HOST_WRITE_MIN_CMD_LEN];
+//     return true;
+// }
 
-    if (!ops->list_local_files(files, &count)) {
-        *err = 0x71;
-        return false;
-    }
-    if (count > MAX_FILE_COUNT) {
-        *err = 0x72;
-        return false;
-    }
-
-    if (!serialize_file_list(files, count, response_body, response_capacity,
-                             response_len)) {
-        *err = 0x73;
-        return false;
-    }
-
-    return true;
-}
-
-static bool handle_read_cmd(const uint8_t *body, uint16_t body_len,
-                            const hsm_file_ops_t *ops, uint8_t *response_body,
-                            uint16_t response_capacity, uint16_t *response_len,
-                            uint8_t *err) {
-    uint8_t slot;
-    file_t file;
-    uint32_t needed;
-
-    if (response_body == NULL || response_len == NULL || err == NULL) {
-        return false;
-    }
-    if (body_len != HOST_READ_CMD_LEN) {
-        *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
-        return false;
-    }
-    if (!authenticate_request_pin(body, body_len, err))
-        return false;
-    if (ops == NULL || ops->read_local_file == NULL) {
-        *err = 0x74;
-        return false;
-    }
-
-    slot = body[PIN_LENGTH];
-    if (slot >= MAX_FILE_COUNT) {
-        *err = 0x85;
-        return false;
-    }
-    if (!ops->read_local_file(slot, &file)) {
-        *err = 0x75;
-        return false;
-    }
-
-    if (!validate_permission(file.group_id, PERM_READ)) {
-        *err = 0x76;
-        return false;
-    }
-
-    needed = (uint32_t)FILE_NAME_SIZE + file.contents_len;
-    if (needed > response_capacity) {
-        *err = 0x77;
-        return false;
-    }
-
-    memcpy(response_body, file.name, FILE_NAME_SIZE);
-    if (file.contents_len > 0 && file.contents != NULL) {
-        memcpy(response_body + FILE_NAME_SIZE, file.contents,
-               file.contents_len);
-    }
-    *response_len = (uint16_t)needed;
-    return true;
-}
-
-static bool parse_write_cmd(const uint8_t *body, uint16_t body_len,
-                            file_t *file, uint8_t *err) {
-    uint32_t fixed_len = (uint32_t)HOST_WRITE_MIN_CMD_LEN;
-    uint32_t expected_len;
-    uint16_t contents_len;
-
-    if (body == NULL || file == NULL || err == NULL) {
-        return false;
-    }
-
-    if (body_len < HOST_WRITE_MIN_CMD_LEN) {
-        *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
-        return false;
-    }
-
-    file->slot = body[PIN_LENGTH];
-    if (file->slot >= MAX_FILE_COUNT) {
-        *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
-        return false;
-    }
-    file->group_id = read_le16(&body[PIN_LENGTH + 1U]);
-    memcpy(file->name, &body[PIN_LENGTH + 3U], FILE_NAME_SIZE);
-    memcpy(file->uuid, &body[PIN_LENGTH + 3U + FILE_NAME_SIZE], FILE_UUID_SIZE);
-
-    contents_len =
-        read_le16(&body[PIN_LENGTH + 3U + FILE_NAME_SIZE + FILE_UUID_SIZE]);
-    if (!checked_add_u32(fixed_len, (uint32_t)contents_len, &expected_len)) {
-        *err = (uint8_t)SECURITY_ERR_BUFFER;
-        return false;
-    }
-    if (expected_len > UINT16_MAX || body_len != (uint16_t)expected_len) {
-        *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
-        return false;
-    }
-
-    file->contents_len = contents_len;
-    file->contents = &body[HOST_WRITE_MIN_CMD_LEN];
-    return true;
-}
-
-static bool handle_write_cmd(const uint8_t *body, uint16_t body_len,
-                             const hsm_file_ops_t *ops, uint16_t *response_len,
-                             uint8_t *err) {
-    file_t file;
-
-    if (response_len == NULL || err == NULL)
-        return false;
-    if (!authenticate_request_pin(body, body_len, err))
-        return false;
-    if (ops == NULL || ops->write_local_file == NULL) {
-        *err = 0x78;
-        return false;
-    }
-    if (!parse_write_cmd(body, body_len, &file, err))
-        return false;
-
-    if (!validate_permission(file.group_id, PERM_WRITE)) {
-        *err = 0x79;
-        return false;
-    }
-
-    if (!ops->write_local_file(&file)) {
-        *err = 0x7A;
-        return false;
-    }
-
-    *response_len = 0;
-    return true;
-}
-
-static bool handle_listen_cmd(const uint8_t *body, uint16_t body_len,
-                              const hsm_file_ops_t *ops, uint16_t *response_len,
-                              uint8_t *err) {
-    (void)body;
-
-    if (response_len == NULL || err == NULL)
-        return false;
-    if (body_len != 0) {
-        *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
-        return false;
-    }
-    if (ops == NULL || ops->listen_for_neighbor == NULL) {
-        *err = 0x7B;
-        return false;
-    }
-
-    if (!ops->listen_for_neighbor()) {
-        *err = 0x7C;
-        return false;
-    }
-
-    *response_len = 0;
-    return true;
-}
-
-static bool handle_interrogate_cmd(const uint8_t *body, uint16_t body_len,
-                                   const hsm_file_ops_t *ops,
-                                   uint8_t *response_body,
-                                   uint16_t response_capacity,
-                                   uint16_t *response_len, uint8_t *err) {
-    file_metadata_t all_files[MAX_FILE_COUNT];
-    file_metadata_t filtered_files[MAX_FILE_COUNT];
-    uint32_t total = MAX_FILE_COUNT;
-    uint32_t filtered = 0;
-    uint32_t i;
-
-    if (response_body == NULL || response_len == NULL || err == NULL) {
-        return false;
-    }
-    if (body_len != HOST_INTERROGATE_CMD_LEN) {
-        *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
-        return false;
-    }
-    if (!authenticate_request_pin(body, body_len, err))
-        return false;
-    if (ops == NULL || ops->interrogate_neighbor == NULL) {
-        *err = 0x7D;
-        return false;
-    }
-
-    if (!ops->interrogate_neighbor(all_files, &total)) {
-        *err = 0x7E;
-        return false;
-    }
-    if (total > MAX_FILE_COUNT) {
-        *err = 0x7F;
-        return false;
-    }
-
-    for (i = 0; i < total; i++) {
-        if (validate_permission(all_files[i].group_id, PERM_RECEIVE)) {
-            filtered_files[filtered++] = all_files[i];
-        }
-    }
-
-    if (!serialize_file_list(filtered_files, filtered, response_body,
-                             response_capacity, response_len)) {
-        *err = 0x80;
-        return false;
-    }
-
-    return true;
-}
-
-static bool handle_receive_cmd(const uint8_t *body, uint16_t body_len,
-                               const hsm_file_ops_t *ops,
-                               uint16_t *response_len, uint8_t *err) {
-    uint8_t read_slot;
-    uint8_t write_slot;
-    file_t file;
-
-    if (response_len == NULL || err == NULL)
-        return false;
-    if (body_len != HOST_RECEIVE_CMD_LEN) {
-        *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
-        return false;
-    }
-    if (!authenticate_request_pin(body, body_len, err))
-        return false;
-
-    if (ops == NULL || ops->receive_neighbor_file == NULL ||
-        ops->write_local_file == NULL) {
-        *err = 0x81;
-        return false;
-    }
-
-    read_slot = body[PIN_LENGTH];
-    write_slot = body[PIN_LENGTH + 1U];
-    if (read_slot >= MAX_FILE_COUNT || write_slot >= MAX_FILE_COUNT) {
-        *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
-        return false;
-    }
-
-    if (!ops->receive_neighbor_file(read_slot, &file)) {
-        *err = 0x82;
-        return false;
-    }
-
-    if (!validate_permission(file.group_id, PERM_RECEIVE)) {
-        *err = 0x83;
-        return false;
-    }
-
-    file.slot = write_slot;
-    if (!ops->write_local_file(&file)) {
-        *err = 0x84;
-        return false;
-    }
-
-    *response_len = 0;
-    return true;
-}
+// static bool handle_write_cmd(const uint8_t *body, uint16_t body_len,
+//                              const hsm_file_ops_t *ops, uint16_t
+//                              *response_len, uint8_t *err) {
+//     file_t file;
+//
+//     if (response_len == NULL || err == NULL)
+//         return false;
+//     if (!authenticate_request_pin(body, body_len, err))
+//         return false;
+//     if (ops == NULL || ops->write_local_file == NULL) {
+//         *err = 0x78;
+//         return false;
+//     }
+//     if (!parse_write_cmd(body, body_len, &file, err))
+//         return false;
+//
+//     if (!validate_permission(file.group_id, PERM_WRITE)) {
+//         *err = 0x79;
+//         return false;
+//     }
+//
+//     if (!ops->write_local_file(&file)) {
+//         *err = 0x7A;
+//         return false;
+//     }
+//
+//     *response_len = 0;
+//     return true;
+// }
+//
+// static bool handle_listen_cmd(const uint8_t *body, uint16_t body_len,
+//                               const hsm_file_ops_t *ops, uint16_t
+//                               *response_len, uint8_t *err) {
+//     (void)body;
+//
+//     if (response_len == NULL || err == NULL)
+//         return false;
+//     if (body_len != 0) {
+//         *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
+//         return false;
+//     }
+//     if (ops == NULL || ops->listen_for_neighbor == NULL) {
+//         *err = 0x7B;
+//         return false;
+//     }
+//
+//     if (!ops->listen_for_neighbor()) {
+//         *err = 0x7C;
+//         return false;
+//     }
+//
+//     *response_len = 0;
+//     return true;
+// }
+//
+// static bool handle_interrogate_cmd(const uint8_t *body, uint16_t body_len,
+//                                    const hsm_file_ops_t *ops,
+//                                    uint8_t *response_body,
+//                                    uint16_t response_capacity,
+//                                    uint16_t *response_len, uint8_t *err) {
+//     file_metadata_t all_files[MAX_FILE_COUNT];
+//     file_metadata_t filtered_files[MAX_FILE_COUNT];
+//     uint32_t total = MAX_FILE_COUNT;
+//     uint32_t filtered = 0;
+//     uint32_t i;
+//
+//     if (response_body == NULL || response_len == NULL || err == NULL) {
+//         return false;
+//     }
+//     if (body_len != HOST_INTERROGATE_CMD_LEN) {
+//         *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
+//         return false;
+//     }
+//     if (!authenticate_request_pin(body, body_len, err))
+//         return false;
+//     if (ops == NULL || ops->interrogate_neighbor == NULL) {
+//         *err = 0x7D;
+//         return false;
+//     }
+//
+//     if (!ops->interrogate_neighbor(all_files, &total)) {
+//         *err = 0x7E;
+//         return false;
+//     }
+//     if (total > MAX_FILE_COUNT) {
+//         *err = 0x7F;
+//         return false;
+//     }
+//
+//     for (i = 0; i < total; i++) {
+//         if (validate_permission(all_files[i].group_id, PERM_RECEIVE)) {
+//             filtered_files[filtered++] = all_files[i];
+//         }
+//     }
+//
+//     if (!serialize_file_list(filtered_files, filtered, response_body,
+//                              response_capacity, response_len)) {
+//         *err = 0x80;
+//         return false;
+//     }
+//
+//     return true;
+// }
+//
+// static bool handle_receive_cmd(const uint8_t *body, uint16_t body_len,
+//                                const hsm_file_ops_t *ops,
+//                                uint16_t *response_len, uint8_t *err) {
+//     uint8_t read_slot;
+//     uint8_t write_slot;
+//     file_t file;
+//
+//     if (response_len == NULL || err == NULL)
+//         return false;
+//     if (body_len != HOST_RECEIVE_CMD_LEN) {
+//         *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
+//         return false;
+//     }
+//     if (!authenticate_request_pin(body, body_len, err))
+//         return false;
+//
+//     if (ops == NULL || ops->receive_neighbor_file == NULL ||
+//         ops->write_local_file == NULL) {
+//         *err = 0x81;
+//         return false;
+//     }
+//
+//     read_slot = body[PIN_LENGTH];
+//     write_slot = body[PIN_LENGTH + 1U];
+//     if (read_slot >= MAX_FILE_COUNT || write_slot >= MAX_FILE_COUNT) {
+//         *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
+//         return false;
+//     }
+//
+//     if (!ops->receive_neighbor_file(read_slot, &file)) {
+//         *err = 0x82;
+//         return false;
+//     }
+//
+//     if (!validate_permission(file.group_id, PERM_RECEIVE)) {
+//         *err = 0x83;
+//         return false;
+//     }
+//
+//     file.slot = write_slot;
+//     if (!ops->write_local_file(&file)) {
+//         *err = 0x84;
+//         return false;
+//     }
+//
+//     *response_len = 0;
+//     return true;
+// }
