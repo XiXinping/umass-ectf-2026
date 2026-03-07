@@ -75,6 +75,7 @@ int gen_rand_block(WC_RNG *rng, uint8_t *output, size_t size) {
     return 0;
 }
 
+/*
 int gen_random_block(WC_RNG *rng, uint8_t *output, size_t size) {
     
     int ret;
@@ -85,6 +86,7 @@ int gen_random_block(WC_RNG *rng, uint8_t *output, size_t size) {
     }
     return 0;
 }
+    */
 
 // Generates a specified number of random bytes using WolfCrypt's PRNG seeded
 // by the hardware TRNG.
