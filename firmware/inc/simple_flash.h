@@ -4,19 +4,20 @@
  * @brief Simple Flash Interface Header
  * @date 2026
  *
- * This source file is part of an example system for MITRE's 2026 Embedded CTF (eCTF).
- * This code is being provided only for educational purposes for the 2026 MITRE eCTF competition,
- * and may not meet MITRE standards for quality. Use this code at your own risk!
+ * This source file is part of an example system for MITRE's 2026 Embedded CTF
+ * (eCTF). This code is being provided only for educational purposes for the
+ * 2026 MITRE eCTF competition, and may not meet MITRE standards for quality.
+ * Use this code at your own risk!
  *
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
 
-#ifndef __SIMPLE_FLASH__
-#define __SIMPLE_FLASH__
+#ifndef SIMPLE_FLASH_H
+#define SIMPLE_FLASH_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
-#include <stdbool.h>
 #include <ti/devices/msp/msp.h>
 #include <ti/driverlib/driverlib.h>
 #include <ti/driverlib/m0p/dl_core.h>
@@ -34,7 +35,7 @@
  * Flash memory can only be erased in a large block size called a page.
  * Once erased, memory can only be written one way e.g. 1->0.
  * In order to be re-written the entire page must be erased.
-*/
+ */
 int flash_simple_erase_page(uint32_t address);
 /**
  * @brief Flash Simple Read
@@ -45,8 +46,8 @@ int flash_simple_erase_page(uint32_t address);
  *
  * This function reads data from the specified flash page into the buffer
  * with the specified amount of bytes
-*/
-void flash_simple_read(uint32_t address, void* buffer, uint32_t size);
+ */
+void flash_simple_read(uint32_t address, void *buffer, uint32_t size);
 /**
  * @brief Flash Simple Write
  *
@@ -60,7 +61,7 @@ void flash_simple_read(uint32_t address, void* buffer, uint32_t size);
  * with the specified amount of bytes. Flash memory can only be written in one
  * way e.g. 1->0. To rewrite previously written memory see the
  * flash_simple_erase_page documentation.
-*/
-int flash_simple_write(uint32_t address, void* buffer, uint32_t size);
+ */
+int flash_simple_write(uint32_t address, void *buffer, uint32_t size);
 
-#endif
+#endif // SIMPLE_FLASH_H

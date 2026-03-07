@@ -1,3 +1,6 @@
+#ifndef SECURE_FILESYSTEM_H
+#define SECURE_FILESYSTEM_H
+
 #include "aes_gcm.h"
 #include "filesystem.h"
 #include "simple_flash.h"
@@ -41,3 +44,5 @@ int secure_write(slot_t slot, file_t *src, uint8_t *uuid);
 // Read a protected file from persistent storage. Does not perform any
 // decryption or verification.
 int load_protected_file(slot_t slot, protected_file_t *dest);
+
+#endif // SECURE_FILESYSTEM_H

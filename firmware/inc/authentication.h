@@ -1,3 +1,6 @@
+#ifndef AUTHENTICATION_H
+#define AUTHENTICATION_H
+
 #include "security.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -84,3 +87,4 @@ void logout(void);
 
 /* Check if penalty delay is active */
 bool penalty_active(void);
+#endif // AUTHENTICATION_H

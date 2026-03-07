@@ -1,3 +1,6 @@
+#ifndef PERMISSION_H
+#define PERMISSION_H
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -78,3 +81,4 @@ bool verify_remote_hsm(const uint8_t *msg, size_t msg_len,
                        const uint8_t *signature, size_t sig_len,
                        const uint8_t *file, size_t file_len, const uint8_t *tag,
                        uint16_t sender_group, permission_t action);
+#endif // PERMISSION_H

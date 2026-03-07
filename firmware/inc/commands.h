@@ -12,8 +12,8 @@
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
 
-#ifndef __COMMANDS_H__
-#define __COMMANDS_H__
+#ifndef COMMANDS_H
+#define COMMANDS_H
 
 #include "filesystem.h"
 #include "secrets.h"
@@ -167,4 +167,4 @@ int interrogate(uint16_t pkt_len, uint8_t *buf);
  */
 int listen(uint16_t pkt_len, uint8_t *buf);
 
-#endif // __COMMANDS_H__
+#endif // COMMANDS_H

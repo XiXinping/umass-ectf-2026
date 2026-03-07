@@ -11,8 +11,8 @@
  *
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
-#ifndef __SECURITY_H__
-#define __SECURITY_H__
+#ifndef SECURITY_H
+#define SECURITY_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -48,4 +48,4 @@ bool check_pin(unsigned char *pin);
 
 void security_init(void);
 
-#endif // __SECURITY_H__
+#endif // SECURITY_H
