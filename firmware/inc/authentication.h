@@ -61,13 +61,13 @@ typedef struct {
 } timestamp_storage_t;
 
 /* Load the PIN from persistent storage */
-static void load_pin();
+void load_pin();
 
 extern uint64_t platform_get_time_ms(void);
 /* Load the timestamp state from persistent storage */
-static void load_timestamp_state(void);
+void load_timestamp_state(void);
 
-static void load_crypto_state(void);
+void load_crypto_state(void);
 
 /* Provision a new PIN (salt + PBKDF2 hash) */
 security_status_t provision_pin(const uint8_t *pin, size_t len);
@@ -76,8 +76,8 @@ security_status_t provision_pin(const uint8_t *pin, size_t len);
  * max retries */
 security_status_t verify_pin(const uint8_t *pin, size_t len);
 
-static bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
-                                     uint8_t *err);
+bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
+                              uint8_t *err);
 
 /* Check if current session is authenticated */
 bool verify_auth(void);

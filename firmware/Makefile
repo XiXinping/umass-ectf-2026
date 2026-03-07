@@ -46,6 +46,8 @@ CFLAGS += -DWOLF_CRYPTO_CB
 
 WOLFSSL_INC = wolfssl/wolfcrypt/src
 CFLAGS += -I./wolfssl
+# CFLAGS += -I/usr/include
+# CFLAGS += -I./usr/include/
 
 # we need to build these objects for the simple crypto example
 OBJECTS += $(WOLFSSL_INC)/aes.o $(WOLFSSL_INC)/hash.o

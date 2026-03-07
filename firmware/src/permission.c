@@ -7,7 +7,7 @@
 #include <wolfssl/wolfcrypt/curve25519.h>
 
 // Return of permission entry with the given group ID
-static const group_permission_t *permission_entry(uint16_t group_id) {
+const group_permission_t *permission_entry(uint16_t group_id) {
     const group_permission_t *entry = &permissions[group_id];
     if (entry->group_id == group_id)
         return entry;
@@ -19,8 +19,8 @@ static const group_permission_t *permission_entry(uint16_t group_id) {
     }
     return NULL;
 }
-static const int get_private_key(int group_id, permission_t permission_type,
-                                 curve25519_key *private_key_out) {
+const int get_private_key(int group_id, permission_t permission_type,
+                          curve25519_key *private_key_out) {
     const group_permission_t *entry = permission_entry(group_id);
     if (entry == NULL) {
         return NULL;
@@ -55,8 +55,8 @@ static const int get_private_key(int group_id, permission_t permission_type,
     return 0;
 }
 
-static const int get_public_key(int group_id, permission_t permission_type,
-                                curve25519_key *public_key_out) {
+const int get_public_key(int group_id, permission_t permission_type,
+                         curve25519_key *public_key_out) {
     const group_permission_t *entry = permission_entry(group_id);
     if (entry == NULL) {
         return -1;
@@ -84,7 +84,7 @@ static const int get_public_key(int group_id, permission_t permission_type,
     return 0;
 }
 
-static bool permission_allowed(uint16_t group_id, permission_t perm) {
+bool permission_allowed(uint16_t group_id, permission_t perm) {
     const group_permission_t *entry = permission_entry(group_id);
     if (entry == NULL)
         return false;
@@ -100,27 +100,26 @@ static bool permission_allowed(uint16_t group_id, permission_t perm) {
         return false;
     }
 }
-static bool validate_permission(uint16_t group_id, permission_t perm) {
+bool validate_permission(uint16_t group_id, permission_t perm) {
     if (!security_is_authenticated())
         return false;
 
     return permission_allowed(group_id, perm);
 }
 
-static bool verify_sender_identity(const uint8_t *msg, size_t msg_len,
-                                   const uint8_t *signature, size_t sig_len) {
+bool verify_sender_identity(const uint8_t *msg, size_t msg_len,
+                            const uint8_t *signature, size_t sig_len) {
     if (msg == NULL || signature == NULL || sig_len == 0)
         return false;
     return ecc_verify_signature(msg, msg_len, signature, sig_len);
 }
 
-static bool verify_sender_permission(uint16_t sender_group,
-                                     permission_enum_t action) {
+bool verify_sender_permission(uint16_t sender_group, permission_enum_t action) {
     return permission_allowed(sender_group, action);
 }
 
-static bool verify_file_integrity(const uint8_t *file, size_t file_len,
-                                  const uint8_t *tag) {
+bool verify_file_integrity(const uint8_t *file, size_t file_len,
+                           const uint8_t *tag) {
     if (file == NULL || tag == NULL)
         return false;
     return aes_gcm_verify(file, file_len, tag);

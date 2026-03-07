@@ -1,5 +1,6 @@
 #ifndef HELPERS_H
 #define HELPERS_H
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>

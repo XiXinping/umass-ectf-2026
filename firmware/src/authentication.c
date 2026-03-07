@@ -16,7 +16,7 @@ bool g_time_anomaly_detected = false;
 
 // PIN Auth/Storage/Update
 
-static bool pin_storage_valid(const pin_storage_t *state) {
+bool pin_storage_valid(const pin_storage_t *state) {
     uint32_t checksum;
 
     if (state == NULL)
@@ -35,7 +35,7 @@ static bool pin_storage_valid(const pin_storage_t *state) {
     return checksum == state->checksum;
 }
 
-static void persist_pin(void) {
+void persist_pin(void) {
     g_pin_data.magic = PIN_STORAGE_MAGIC;
     g_pin_data.checksum = simple_checksum32((const uint8_t *)&g_pin_data,
                                             offsetof(pin_storage_t, checksum));
@@ -43,11 +43,11 @@ static void persist_pin(void) {
     flash_write(PIN_FLASH_ADDR, (uint8_t *)&g_pin_data, sizeof(g_pin_data));
 }
 
-static void load_pin(void) {
+void load_pin(void) {
     flash_read(PIN_FLASH_ADDR, (uint8_t *)&g_pin_data, sizeof(g_pin_data));
 }
 
-static security_status_t register_failed_pin_attempt(void) {
+security_status_t register_failed_pin_attempt(void) {
     uint64_t now = monotonic_time_ms();
     g_pin_data.failed_attempts++;
     g_pin_data.penalty_expiration_ms = safe_add_u64(now, PIN_FAILURE_DELAY_MS);
@@ -59,7 +59,7 @@ static security_status_t register_failed_pin_attempt(void) {
     persist_pin();
     return SECURITY_ERR_INVALID_PIN;
 }
-static bool pin_is_lower_hex(const uint8_t *pin, size_t len) {
+bool pin_is_lower_hex(const uint8_t *pin, size_t len) {
     size_t i;
 
     if (pin == NULL || len != PIN_LENGTH)
@@ -74,8 +74,8 @@ static bool pin_is_lower_hex(const uint8_t *pin, size_t len) {
     return true;
 }
 
-static bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
-                                     uint8_t *err) {
+bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
+                              uint8_t *err) {
     if (err == NULL)
         return false;
     if (body == NULL || body_len < PIN_LENGTH) {
@@ -200,7 +200,7 @@ void logout(void) {
     persist_pin();
 }
 
-static bool pin_storage_valid(const pin_storage_t *state) {
+bool pin_storage_valid(const pin_storage_t *state) {
     uint32_t checksum;
 
     if (state == NULL)
@@ -219,7 +219,7 @@ static bool pin_storage_valid(const pin_storage_t *state) {
     return checksum == state->checksum;
 }
 
-static bool timestamp_storage_valid(const timestamp_storage_t *state) {
+bool timestamp_storage_valid(const timestamp_storage_t *state) {
     uint32_t checksum;
 
     if (state == NULL)
@@ -234,7 +234,7 @@ static bool timestamp_storage_valid(const timestamp_storage_t *state) {
     return checksum == state->checksum;
 }
 
-static void persist_timestamp_state(void) {
+void persist_timestamp_state(void) {
     g_time_data.magic = TIMESTAMP_STORAGE_MAGIC;
     g_time_data.checksum = simple_checksum32(
         (const uint8_t *)&g_time_data, offsetof(timestamp_storage_t, checksum));
@@ -242,11 +242,11 @@ static void persist_timestamp_state(void) {
     flash_write(TIME_FLASH_ADDR, (uint8_t *)&g_time_data, sizeof(g_time_data));
 }
 
-static void load_timestamp_state(void) {
+void load_timestamp_state(void) {
     flash_read(TIME_FLASH_ADDR, (uint8_t *)&g_time_data, sizeof(g_time_data));
 }
 
-static bool crypto_storage_valid(const crypto_storage_t *state) {
+bool crypto_storage_valid(const crypto_storage_t *state) {
     uint32_t checksum;
     if (state == NULL)
         return false;
@@ -258,7 +258,7 @@ static bool crypto_storage_valid(const crypto_storage_t *state) {
     return checksum == state->checksum;
 }
 
-static void persist_crypto_state(void) {
+void persist_crypto_state(void) {
     g_crypto_data.magic = CRYPTO_STORAGE_MAGIC;
     g_crypto_data.checksum = simple_checksum32(
         (const uint8_t *)&g_crypto_data, offsetof(crypto_storage_t, checksum));
@@ -267,16 +267,16 @@ static void persist_crypto_state(void) {
                 sizeof(g_crypto_data));
 }
 
-static void load_crypto_state(void) {
+void load_crypto_state(void) {
     flash_read(CRYPTO_FLASH_ADDR, (uint8_t *)&g_crypto_data,
                sizeof(g_crypto_data));
 }
 
-static uint8_t status_to_error_code(security_status_t status) {
+uint8_t status_to_error_code(security_status_t status) {
     return (uint8_t)status;
 }
 
-static bool pin_is_lower_hex(const uint8_t *pin, size_t len) {
+bool pin_is_lower_hex(const uint8_t *pin, size_t len) {
     size_t i;
 
     if (pin == NULL || len != PIN_LENGTH)
@@ -291,7 +291,7 @@ static bool pin_is_lower_hex(const uint8_t *pin, size_t len) {
     return true;
 }
 
-static security_status_t register_failed_pin_attempt(void) {
+security_status_t register_failed_pin_attempt(void) {
     uint64_t now = monotonic_time_ms();
     g_pin_data.failed_attempts++;
     g_pin_data.penalty_expiration_ms = safe_add_u64(now, PIN_FAILURE_DELAY_MS);
@@ -304,8 +304,8 @@ static security_status_t register_failed_pin_attempt(void) {
     return SECURITY_ERR_INVALID_PIN;
 }
 
-static bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
-                                     uint8_t *err) {
+bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
+                              uint8_t *err) {
     if (err == NULL)
         return false;
     if (body == NULL || body_len < PIN_LENGTH) {
@@ -322,10 +322,10 @@ static bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
     return true;
 }
 
-static void persist_timestamp_state(void);
+void persist_timestamp_state(void);
 
 /* Clamp non-monotonic rollback from platform time source. */
-static uint64_t monotonic_time_ms(void) {
+uint64_t monotonic_time_ms(void) {
     uint64_t tolerated_now;
     uint64_t now = platform_get_time_ms();
     if (!checked_add_u64(now, TIMESTAMP_DRIFT_TOLERANCE_MS, &tolerated_now)) {
@@ -351,7 +351,7 @@ static uint64_t monotonic_time_ms(void) {
     return now;
 }
 
-static void flush_timestamp_state_if_needed(void) {
+void flush_timestamp_state_if_needed(void) {
     if (g_time_anomaly_detected)
         return;
     if (g_time_data.max_observed_timestamp_ms <= g_time_data.first_timestamp_ms)

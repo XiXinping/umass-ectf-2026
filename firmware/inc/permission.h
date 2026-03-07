@@ -72,7 +72,7 @@ static bool permission_allowed(uint16_t group_id, permission_t perm);
  *
  *  @return True if the HSM has the correct permission. False if not.
  */
-static bool validate_permission(uint16_t group_id, permission_t perm);
+bool validate_permission(uint16_t group_id, permission_t perm);
 /* Verify that a remote HSM message is valid:
    - sender identity via ECC signature
    - permission group of sender
