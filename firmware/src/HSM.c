@@ -15,12 +15,11 @@
 /*********************** INCLUDES *************************/
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 
 #include "commands.h"
 #include "filesystem.h"
 #include "host_messaging.h"
-#include "simple_flash.h"
+// #include "simple_flash.h"
 #include "simple_uart.h"
 #include "status_led.h"
 #include "ti_msp_dl_config.h"

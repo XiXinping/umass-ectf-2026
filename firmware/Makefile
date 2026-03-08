@@ -1,3 +1,4 @@
+DEVNULL = /dev/null
 # MSPM0_SDK_INSTALL_DIR ?= $(abspath ../../../../../..)
 MSPM0_SDK_INSTALL_DIR = $(HOME)/.ti/mspm0_sdk_2_09_00_01
 TICLANG_ARMCOMPILER = $(HOME)/.ti/ti-cgt-armllvm_5.0.0.STS
@@ -16,6 +17,12 @@ LINKERFILE = "firmware.ld"
 CRYPTO_EXAMPLE = 0
 
 OBJECTS = $(BUILDDIR)/HSM.so \
+	$(BUILDDIR)/authentication.so \
+	$(BUILDDIR)/crypto.so \
+	$(BUILDDIR)/random.so \
+	$(BUILDDIR)/permission.so \
+	$(BUILDDIR)/helpers.so \
+	$(BUILDDIR)/ecc.so \
     $(BUILDDIR)/simple_uart.so \
     $(BUILDDIR)/ti_msp_dl_config.so \
     $(BUILDDIR)/startup_mspm0l222x_ticlang.so \
@@ -23,6 +30,7 @@ OBJECTS = $(BUILDDIR)/HSM.so \
     $(BUILDDIR)/host_messaging.so \
     $(BUILDDIR)/security.so \
     $(BUILDDIR)/filesystem.so \
+	$(BUILDDIR)/secure_filesystem.so \
     $(BUILDDIR)/commands.so
 
 ifeq ($(CRYPTO_EXAMPLE), 1)
@@ -43,9 +51,11 @@ CFLAGS += -DNO_FILESYSTEM
 CFLAGS += -DNO_DEV_RANDOM
 CFLAGS += -DWC_NO_DEFAULT_DEVID
 CFLAGS += -DWOLF_CRYPTO_CB
+CFLAGS += -DWOLFSSL_USER_SETTINGS
 
 WOLFSSL_INC = wolfssl/wolfcrypt/src
-CFLAGS += -I./wolfssl
+CFLAGS += -Iinc/wolfssl
+# CFLAGS += -Iinc/wolfssl/wolfssl
 # CFLAGS += -I/usr/include
 # CFLAGS += -I./usr/include/
 

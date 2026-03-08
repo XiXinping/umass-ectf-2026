@@ -124,10 +124,10 @@ int read(uint16_t pkt_len, uint8_t *buf) {
     //     curr_file.contents_len); // changed from curr file to decrypted
     //     buffer
 
-    if (!validate_permission(curr_file.group_id, PERM_READ)) {
-        print_error("Invalid permission");
-        return -1;
-    }
+    // if (!validate_permission(curr_file.group_id, PERM_READ)) {
+    //     print_error("Invalid permission");
+    //     return -1;
+    // }
 
     // write a success message with the file information
     pkt_len_t length = FILE_NAME_SIZE + curr_file.contents_len;
@@ -152,10 +152,10 @@ int write(uint16_t pkt_len, uint8_t *buf) {
         return -1;
     }
 
-    if (!validate_permission(command->group_id, PERM_WRITE)) {
-        print_error("Invalid permission");
-        return -1;
-    }
+    // if (!validate_permission(command->group_id, PERM_WRITE)) {
+    //     print_error("Invalid permission");
+    //     return -1;
+    // }
 
     create_file(&curr_file, command->group_id, command->name,
                 command->contents_len, command->contents);

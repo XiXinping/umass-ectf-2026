@@ -11,7 +11,8 @@
  *
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
-#include "security.h"
+
+#define WOLFSSL_USER_SETTINGS
 #include "authentication.h"
 #include "crypto.h"
 #include "host_messaging.h"
@@ -82,13 +83,13 @@ void security_init(void) {
 
     if (!crypto_storage_valid(&g_crypto_data)) {
         memset(&g_crypto_data, 0, sizeof(g_crypto_data));
-        if (trng_generate(g_crypto_data.key, AES_GCM_KEY_SIZE) != 0) {
+        if (trng_generate(g_crypto_data.key, AES_KEY_SIZE) != 0) {
             g_time_anomaly_detected = true;
         }
-        if (trng_generate(g_crypto_data.last_iv, AES_GCM_IV_SIZE) != 0) {
+        if (trng_generate(g_crypto_data.last_iv, AES_IV_SIZE) != 0) {
             g_time_anomaly_detected = true;
         }
-        memset(g_crypto_data.last_tag, 0, AES_GCM_TAG_SIZE);
+        memset(g_crypto_data.last_tag, 0, AUTH_TAG_SIZE);
         persist_crypto_state();
     }
 

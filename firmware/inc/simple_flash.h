@@ -15,9 +15,21 @@
 #ifndef SIMPLE_FLASH_H
 #define SIMPLE_FLASH_H
 
+#ifndef DeviceFamily_MSPM0L222X
+#define DeviceFamily_MSPM0L222X
+#endif
+
+#ifndef CONFIG_MSPM0L222X
+#define CONFIG_MSPM0L222X
+#endif
+
+#ifndef CONFIG_MSPM0L2228
+#define CONFIG_MSPM0L2228
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
-#include <string.h>
+// #include <string.h>
 #include <ti/devices/msp/msp.h>
 #include <ti/driverlib/driverlib.h>
 #include <ti/driverlib/m0p/dl_core.h>

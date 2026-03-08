@@ -87,4 +87,13 @@ void logout(void);
 
 /* Check if penalty delay is active */
 bool penalty_active(void);
+
+void flush_timestamp_state_if_needed(void);
+
+// Get the current time since boot in milliseconds
+uint64_t monotonic_time_ms(void);
+
+// Convert a status enum to a numerical code
+uint8_t status_to_error_code(security_status_t status);
+
 #endif // AUTHENTICATION_H

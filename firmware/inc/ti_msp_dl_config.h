@@ -40,9 +40,17 @@
 #ifndef ti_msp_dl_config_h
 #define ti_msp_dl_config_h
 
+#ifndef DeviceFamily_MSPM0L222X
 #define DeviceFamily_MSPM0L222X
+#endif
+
+#ifndef CONFIG_MSPM0L222X
 #define CONFIG_MSPM0L222X
+#endif
+
+#ifndef CONFIG_MSPM0L2228
 #define CONFIG_MSPM0L2228
+#endif
 
 #if defined(__ti_version__) || defined(__TI_COMPILER_VERSION__)
 #define SYSCONFIG_WEAK __attribute__((weak))

@@ -1,5 +1,7 @@
+#define WOLFSSL_USER_SETTINGS
 #include "authentication.h"
 #include "crypto.h"
+#include "helpers.h"
 #include "security.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -31,20 +33,8 @@ bool pin_storage_valid(const pin_storage_t *state) {
         return false;
 
     checksum = simple_checksum32((const uint8_t *)state,
-                                 offsetof(struct pin_storage_t, checksum));
+                                 offsetof(pin_storage_t, checksum));
     return checksum == state->checksum;
-}
-
-void persist_pin(void) {
-    g_pin_data.magic = PIN_STORAGE_MAGIC;
-    g_pin_data.checksum = simple_checksum32((const uint8_t *)&g_pin_data,
-                                            offsetof(pin_storage_t, checksum));
-    flash_erase_page(PIN_FLASH_ADDR);
-    flash_write(PIN_FLASH_ADDR, (uint8_t *)&g_pin_data, sizeof(g_pin_data));
-}
-
-void load_pin(void) {
-    flash_read(PIN_FLASH_ADDR, (uint8_t *)&g_pin_data, sizeof(g_pin_data));
 }
 
 security_status_t register_failed_pin_attempt(void) {
@@ -56,7 +46,6 @@ security_status_t register_failed_pin_attempt(void) {
     g_authenticated = false;
     g_session_expiration_ms = 0;
     flush_timestamp_state_if_needed();
-    persist_pin();
     return SECURITY_ERR_INVALID_PIN;
 }
 bool pin_is_lower_hex(const uint8_t *pin, size_t len) {
@@ -137,7 +126,6 @@ security_status_t verify_pin(const uint8_t *pin, size_t len) {
     g_pin_data.session_active = true;
     g_pin_data.session_expiration_ms = g_session_expiration_ms;
     flush_timestamp_state_if_needed();
-    persist_pin();
     return SECURITY_OK;
 }
 
@@ -166,7 +154,6 @@ security_status_t provision_pin(const uint8_t *pin, size_t len) {
     g_authenticated = false;
     g_session_expiration_ms = 0;
     flush_timestamp_state_if_needed();
-    persist_pin();
     return SECURITY_OK;
 }
 
@@ -176,7 +163,6 @@ bool verify_auth(void) {
         g_session_expiration_ms = 0;
         g_pin_data.session_active = false;
         g_pin_data.session_expiration_ms = 0;
-        persist_pin();
         return false;
     }
     if (!g_authenticated || !g_pin_data.session_active)
@@ -186,7 +172,6 @@ bool verify_auth(void) {
         g_session_expiration_ms = 0;
         g_pin_data.session_active = false;
         g_pin_data.session_expiration_ms = 0;
-        persist_pin();
         return false;
     }
     return true;
@@ -197,26 +182,6 @@ void logout(void) {
     g_session_expiration_ms = 0;
     g_pin_data.session_active = false;
     g_pin_data.session_expiration_ms = 0;
-    persist_pin();
-}
-
-bool pin_storage_valid(const pin_storage_t *state) {
-    uint32_t checksum;
-
-    if (state == NULL)
-        return false;
-    if (state->magic != PIN_STORAGE_MAGIC)
-        return false;
-    if (state->failed_attempts > PIN_MAX_RETRIES)
-        return false;
-    if (state->session_active && state->session_expiration_ms == 0U)
-        return false;
-    if (!state->session_active && state->session_expiration_ms != 0U)
-        return false;
-
-    checksum = simple_checksum32((const uint8_t *)state,
-                                 offsetof(pin_storage_t, checksum));
-    return checksum == state->checksum;
 }
 
 bool timestamp_storage_valid(const timestamp_storage_t *state) {
@@ -274,52 +239,6 @@ void load_crypto_state(void) {
 
 uint8_t status_to_error_code(security_status_t status) {
     return (uint8_t)status;
-}
-
-bool pin_is_lower_hex(const uint8_t *pin, size_t len) {
-    size_t i;
-
-    if (pin == NULL || len != PIN_LENGTH)
-        return false;
-    for (i = 0; i < len; i++) {
-        uint8_t c = pin[i];
-        bool is_digit = (c >= (uint8_t)'0' && c <= (uint8_t)'9');
-        bool is_lower_hex_alpha = (c >= (uint8_t)'a' && c <= (uint8_t)'f');
-        if (!is_digit && !is_lower_hex_alpha)
-            return false;
-    }
-    return true;
-}
-
-security_status_t register_failed_pin_attempt(void) {
-    uint64_t now = monotonic_time_ms();
-    g_pin_data.failed_attempts++;
-    g_pin_data.penalty_expiration_ms = safe_add_u64(now, PIN_FAILURE_DELAY_MS);
-    g_pin_data.session_active = false;
-    g_pin_data.session_expiration_ms = 0;
-    g_authenticated = false;
-    g_session_expiration_ms = 0;
-    flush_timestamp_state_if_needed();
-    persist_pin();
-    return SECURITY_ERR_INVALID_PIN;
-}
-
-bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
-                              uint8_t *err) {
-    if (err == NULL)
-        return false;
-    if (body == NULL || body_len < PIN_LENGTH) {
-        *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
-        return false;
-    }
-
-    security_status_t st = security_verify_pin(body, PIN_LENGTH);
-    if (st != SECURITY_OK) {
-        *err = status_to_error_code(st);
-        return false;
-    }
-
-    return true;
 }
 
 void persist_timestamp_state(void);
