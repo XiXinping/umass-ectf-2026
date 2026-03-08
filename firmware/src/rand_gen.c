@@ -1,5 +1,7 @@
 // Random number gen with TRNG seeding the PRNG with statistical guarantees
 
+#define WOLFSSL_USER_SETTINGS
+#include <wolfssl/wolfcrypt/settings.h>
 #include "ti_msp_dl_config.h"
 #include <wolfssl/wolfcrypt/random.h>
 

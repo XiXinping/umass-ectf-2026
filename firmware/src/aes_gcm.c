@@ -19,6 +19,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
  */
 
+#define WOLFSSL_USER_SETTINGS
+#include <wolfssl/wolfcrypt/settings.h>
+
+
 #include "simple_flash.h"
 #include <wolfssl/options.h>
 #include <wolfssl/wolfcrypt/aes.h>

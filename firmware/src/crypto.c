@@ -1,7 +1,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-
+/*
 bool security_sign_message(const uint8_t *msg, size_t msg_len,
                            uint8_t *signature, size_t sig_len) {
     if (!security_is_authenticated())
@@ -11,8 +11,7 @@ bool security_sign_message(const uint8_t *msg, size_t msg_len,
     return ecc_sign_message(msg, msg_len, signature, sig_len);
 }
 
-/* -------------------- AES-GCM File Encryption / Decryption
- * -------------------- */
+
 
 bool symmetric_encrypt(const uint8_t *plaintext, size_t len,
                        uint8_t *ciphertext, uint8_t *tag) {
@@ -54,3 +53,4 @@ bool double_rot13_encrypt(uint8_t *plaintext, uint8_t *ciphertext) {
     *ciphertext = *plaintext;
     return true;
 }
+*/

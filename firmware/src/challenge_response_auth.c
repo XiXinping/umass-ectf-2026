@@ -1,25 +1,30 @@
+#define WOLFSSL_USER_SETTINGS
+#include <wolfssl/wolfcrypt/settings.h>
+
 #include <wolfssl/options.h>
 #include <wolfssl/wolfcrypt/aes.h>
 #include <wolfssl/wolfcrypt/curve25519.h>
 #include <wolfssl/wolfcrypt/ecc.h>
 #include <wolfssl/wolfcrypt/random.h>
 #include <wolfssl/wolfcrypt/settings.h>
+#include "rand_gen.h"
 
-#include <wolfssl/ssl.h>
-#include <wolfssl/test.h>
 
 int send_challenge_nonce(WC_RNG *rng)
 {
     byte output[32]; 
-    gen_random_block(output, 32);
-    
+    if (gen_rand_block(rng, output, 32) != 0) {
+        return -1;
+    }
+    return 0;
 
 }
 
-int sign_nonce(byte *nonce, ecc_key *ephemeral_private_key, ecc_key *cipher_public_key)
+int sign_nonce(WC_RNG *rng, byte *nonce, ecc_key *ephemeral_private_key, ecc_key *cipher_public_key)
 {
     ecc_key signing_key;
-    int ret, sigSz;
+    int ret;
+    word32 sigSz;
 
     byte pub_key_bytes[32];
     word32 pub_size = sizeof(pub_size);
@@ -46,12 +51,13 @@ int sign_nonce(byte *nonce, ecc_key *ephemeral_private_key, ecc_key *cipher_publ
 
     byte sig[512]; 
     sigSz = sizeof(sig);
-    ret = wc_ecc_sign_hash(nonce, sizeof(nonce), sig, &sigSz, &signing_key);
+    ret = wc_ecc_sign_hash(nonce, sizeof(nonce), sig, &sigSz, rng, &signing_key);
     if (ret != 0) {
         // error generating message signature
         printf("Failed to sign challenge nonce!");
+        return -1;
     }
-    
+    return 0;
 }
 
 int verify_nonce_sig(byte *sig, word32 sigSize, byte *nonce, word32 digestSize, ecc_key *ephemeral_private_key, ecc_key *cipher_public_key)
@@ -88,9 +94,11 @@ int verify_nonce_sig(byte *sig, word32 sigSize, byte *nonce, word32 digestSize, 
                                  &verified, &signing_key);
     if (ret != 0) {
         printf("Failed to verify nonce!");
+        ret = -1;
     } else if (verified == 0) {
         printf("Nonce signature is invalid!");
+        ret = -1;
     }
-
+    return ret;
     
 }

@@ -1,12 +1,14 @@
+#define WOLFSSL_USER_SETTINGS
+#include <wolfssl/wolfcrypt/settings.h>
+
 #include <wolfssl/options.h>
 #include <wolfssl/wolfcrypt/aes.h>
 #include <wolfssl/wolfcrypt/curve25519.h>
 #include <wolfssl/wolfcrypt/ecc.h>
 #include <wolfssl/wolfcrypt/random.h>
-#include <wolfssl/wolfcrypt/settings.h>
-
-#include <wolfssl/ssl.h>
-#include <wolfssl/test.h>
+#include <stdint.h>
+#include "aes_gcm.h"
+#include "rand_gen.h"
 // Need to fix function, reinitializing the rng
 int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
                            ecc_key *public_key, uint8_t *additional_data,
@@ -53,7 +55,7 @@ int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
     }
 
     // byte cipher_public_key[32];
-    if (wc_ecc_make_pub(ephemeral_priv_key, NULL) != 0) {
+    if (wc_ecc_make_pub(&ephemeral_priv_key, NULL) != 0) {
         printf("Failed to create public key!");
         return -1;
     }
@@ -61,16 +63,16 @@ int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
     byte cipher_public_key[32];
     word32 cipher_public_key_size = sizeof(cipher_public_key);
 
-    if(wc_ecc_export_x963(ephemeral_priv_key, cipher_public_key, &cipher_public_key_size) != 0) {
+    if(wc_ecc_export_x963(&ephemeral_priv_key, cipher_public_key, &cipher_public_key_size) != 0) {
         printf("Failed to export public key!");
         return -1;
     }
 
     byte iv[GCM_NONCE_MID_SZ];
-    gen_random_block(iv, GCM_NONCE_MID_SZ); // Replace this call with gen_random_block
+    gen_rand_block(&rng, iv, GCM_NONCE_MID_SZ); // Replace this call with gen_random_block
 
     if (aes_gcm_enc(plaintext, plaintext_size, symmetric_key, iv,
-                        auth_tag_out, additional_data, additional_data_size,
+                        additional_data, additional_data_size,
                         ciphertext_out, auth_tag_out) != 0) {
         printf("Unable to encrypt with AES!");
         return -1;
@@ -78,7 +80,7 @@ int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
     return 0;
 }
 
-uint8_t *ecc_asymmetric_dec(uint8_t *ciphertext, size_t ciphertext_size,
+int ecc_asymmetric_dec(uint8_t *ciphertext, size_t ciphertext_size,
                            ecc_key *private_key, uint8_t *additional_data,
                            size_t additional_data_size, uint8_t *plain_out, uint8_t *iv,
                            uint8_t *auth_tag,
@@ -125,7 +127,8 @@ uint8_t *ecc_asymmetric_dec(uint8_t *ciphertext, size_t ciphertext_size,
 
 int ecc_sign_file_digest(WC_RNG *rng, byte *digest, ecc_key *ephemeral_private_key, ecc_key *cipher_public_key) {
     ecc_key signing_key;
-    int ret, sigSz;
+    int ret;
+    word32 sigSz;
 
     byte pub_key_bytes[32];
     word32 pub_size = sizeof(pub_size);
@@ -154,7 +157,7 @@ int ecc_sign_file_digest(WC_RNG *rng, byte *digest, ecc_key *ephemeral_private_k
 
     byte sig[512]; // will hold generated signature
     sigSz = sizeof(sig);
-    ret = wc_ecc_sign_hash(digest, sizeof(digest), sig, &sigSz, &signing_key);
+    ret = wc_ecc_sign_hash(digest, sizeof(digest), sig, &sigSz, rng, &signing_key);
     if (ret != 0) {
         // error generating message signature
         printf("Failed to sign file digest!");

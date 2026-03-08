@@ -1,6 +1,11 @@
+#ifndef PERMISSION_H
+#define PERMISSION_H
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+
+#define ECC_KEY_SIZE ;
 
 // A struct representing a public-private key pair.
 typedef struct {
@@ -47,7 +52,7 @@ typedef enum {
  * @return Returns the raw bytes of the private key if the HSM has permission.
  * Returns NULL otherwise.
  */
-static const uint8_t *get_private_key(int group_id,
+static const uint8_t *get_private_key(uint16_t group_id,
                                       permission_t permission_type);
 /**
  * @brief Get the public key corresponding to a permission for a group.
@@ -56,7 +61,7 @@ static const uint8_t *get_private_key(int group_id,
  * @param permisison_type The kind of permission (read, write, or receive)
  * @return Returns the raw bytes of the public key.
  */
-static const uint8_t *get_public_key(int group_id,
+static const uint8_t *get_public_key(uint16_t group_id,
                                      permission_t permission_type);
 
 static bool permission_allowed(uint16_t group_id, permission_t perm);
@@ -67,8 +72,7 @@ static bool permission_allowed(uint16_t group_id, permission_t perm);
  *
  *  @return True if the HSM has the correct permission. False if not.
  */
-static bool validate_permission(uint16_t group_id, permission_t perm);
-
+bool validate_permission(uint16_t group_id, permission_t perm);
 /* Verify that a remote HSM message is valid:
    - sender identity via ECC signature
    - permission group of sender
@@ -77,3 +81,4 @@ bool verify_remote_hsm(const uint8_t *msg, size_t msg_len,
                        const uint8_t *signature, size_t sig_len,
                        const uint8_t *file, size_t file_len, const uint8_t *tag,
                        uint16_t sender_group, permission_t action);
+#endif // PERMISSION_H

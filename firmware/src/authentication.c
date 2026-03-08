@@ -1,3 +1,5 @@
+#define WOLFSSL_USER_SETTINGS
+#include <wolfssl/wolfcrypt/settings.h>
 #include "authentication.h"
 #include "security.h"
 #include <stdbool.h>
@@ -6,10 +8,10 @@
 #include <string.h>
 #include <crypto.h>
 #include <stddef.h>
-#include "helpers.h"
+// #include "helpers.h"
 #include "simple_flash.h"
 
-
+/*
 static pin_storage_t g_pin_data;
 static bool g_authenticated = false;
 static uint64_t g_session_expiration_ms = 0;
@@ -100,7 +102,6 @@ static bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
     return true;
 }
 
-/* -------------------- Penalty -------------------- */
 
 bool penalty_active(void) {
     if (g_time_anomaly_detected)
@@ -109,7 +110,6 @@ bool penalty_active(void) {
     return now < g_pin_data.penalty_expiration_ms;
 }
 
-/* -------------------- PIN Verification -------------------- */
 
 security_status_t verify_pin(const uint8_t *pin, size_t len) {
     if (pin == NULL)
@@ -273,7 +273,6 @@ static void flush_timestamp_state_if_needed(void) {
 }
 
 
-/* Clamp non-monotonic rollback from platform time source. */
 static uint64_t monotonic_time_ms(void) {
     uint64_t tolerated_now;
     uint64_t now = platform_get_time_ms();
@@ -303,3 +302,5 @@ static uint64_t monotonic_time_ms(void) {
 static uint8_t status_to_error_code(security_status_t status) {
     return (uint8_t)status;
 }
+
+*/

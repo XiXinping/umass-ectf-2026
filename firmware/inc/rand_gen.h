@@ -2,11 +2,12 @@
 
 #include <stdint.h>
 
-int trng_gen_seed(uint8_t* output, int size);
+int trng_gen_seed(uint8_t *output, int size);
 
+int wc_GenerateSeed(OS_Seed *os, byte *output, word32 sz);
 
-int wc_GenerateSeed(OS_Seed* os, byte* output, word32 sz);
+int init_random(WC_RNG *rng);
 
-int PRNG_nonce(uint8_t* output);
+int free_random(WC_RNG *rng);
 
-int PRNG_block(uint8_t* output);
+int gen_rand_block(WC_RNG *rng, uint8_t *output, size_t size);

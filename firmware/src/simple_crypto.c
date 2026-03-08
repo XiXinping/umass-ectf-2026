@@ -14,6 +14,8 @@
 
 // #if CRYPTO_EXAMPLE
 
+#define WOLFSSL_USER_SETTINGS
+#include <wolfssl/wolfcrypt/settings.h>
 #include "simple_crypto.h"
 #include "security.h"
 #include <stdint.h>

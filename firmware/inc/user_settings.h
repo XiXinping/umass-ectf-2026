@@ -42,6 +42,8 @@
 
 /* This next one silences that specific warning by acknowledging you've hardened it */
 #define WC_NO_HAS_OPTIONS
+#define WOLFSSL_USER_SETTINGS
+#define HAVE_X963_KDF
 
 /* ------------------------------------------------------------------------- */
 /* Debugging (Disable for final submission to save space) */

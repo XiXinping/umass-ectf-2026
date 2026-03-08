@@ -16,10 +16,13 @@
  *
  * @return 0 upon success. A negative value otherwise.
  */
+
+/*
 int secure_read(slot_t slot, file_t *dest) {
-    file_t file = NULL;
+    file_t file;
     if (read_file(slot, &file) < 0 || file == NULL) {
         print_error("Failed to read file!");
         return -1;
     }
 }
+    */
