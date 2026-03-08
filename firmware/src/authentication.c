@@ -3,12 +3,12 @@
 #include "crypto.h"
 #include "helpers.h"
 #include "security.h"
+#include <crypto.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <crypto.h>
-#include <stddef.h>
 // #include "helpers.h"
 #include "simple_flash.h"
 
@@ -85,14 +85,12 @@ bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
     return true;
 }
 
-
 bool penalty_active(void) {
     if (g_time_anomaly_detected)
         return true;
     uint64_t now = monotonic_time_ms();
     return now < g_pin_data.penalty_expiration_ms;
 }
-
 
 security_status_t verify_pin(const uint8_t *pin, size_t len) {
     if (pin == NULL)
@@ -206,7 +204,8 @@ void persist_timestamp_state(void) {
     g_time_data.checksum = simple_checksum32(
         (const uint8_t *)&g_time_data, offsetof(timestamp_storage_t, checksum));
     flash_simple_erase_page(TIME_FLASH_ADDR);
-    flash_simple_write(TIME_FLASH_ADDR, (uint8_t *)&g_time_data, sizeof(g_time_data));
+    flash_simple_write(TIME_FLASH_ADDR, (uint8_t *)&g_time_data,
+                       sizeof(g_time_data));
 }
 
 void load_timestamp_state(void) {
@@ -231,7 +230,7 @@ void persist_crypto_state(void) {
         (const uint8_t *)&g_crypto_data, offsetof(crypto_storage_t, checksum));
     flash_simple_erase_page(CRYPTO_FLASH_ADDR);
     flash_simple_write(CRYPTO_FLASH_ADDR, (uint8_t *)&g_crypto_data,
-                sizeof(g_crypto_data));
+                       sizeof(g_crypto_data));
 }
 
 void load_crypto_state(void) {
@@ -279,5 +278,3 @@ void flush_timestamp_state_if_needed(void) {
         return;
     persist_timestamp_state();
 }
-
-*/

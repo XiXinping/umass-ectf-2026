@@ -1,13 +1,7 @@
-#include "host_messaging.h"
 #include "simple_crypto.h"
-#include "simple_flash.h"
-#include "system.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include "simple_flash.h"
-#include "simple_crypto.h"
-#include "host_messaging.h"
 
 void persist_timestamp_state(void);
 
