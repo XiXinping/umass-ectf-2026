@@ -1,11 +1,14 @@
+// #include "user_settings.h"
 #define WOLFSSL_USER_SETTINGS
-// #include <wolfssl/wolfcrypt/settings.h>
+#define HAVE_ECC
+#define HAVE_SUPPORTED_CURVES
+#include <wolfssl/wolfcrypt/settings.h>
 
 #include "crypto.h"
 #include "random.h"
 #include <stdint.h>
 #include <wolfssl/wolfcrypt/aes.h>
-#include <wolfssl/wolfcrypt/curve25519.h>
+// #include <wolfssl/wolfcrypt/curve25519.h>
 #include <wolfssl/wolfcrypt/ecc.h>
 #include <wolfssl/wolfcrypt/random.h>
 // Need to fix function, reinitializing the rng

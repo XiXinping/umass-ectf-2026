@@ -1,7 +1,7 @@
 #ifndef SECURE_FILESYSTEM_H
 #define SECURE_FILESYSTEM_H
 
-#include "aes_gcm.h"
+#include "crypto.h"
 #include "filesystem.h"
 #include "simple_flash.h"
 #include <stdint.h>
@@ -15,7 +15,7 @@
 typedef struct {
     uint32_t in_use;
     group_id_t group_id;
-    char name[MAX_NAME_SIZE];
+    char name[FILE_NAME_SIZE];
     uint16_t length;
 
     uint8_t nonce[NONCE_SIZE];

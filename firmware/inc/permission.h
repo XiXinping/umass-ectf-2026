@@ -1,18 +1,17 @@
 #ifndef PERMISSION_H
 #define PERMISSION_H
 
+#include "ecc.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
-#define ECC_KEY_SIZE ;
-
 // A struct representing a public-private key pair.
 typedef struct {
     // All HSMs have access to the public key for every permission
-    uint8_t public_key[32];
+    uint8_t public_key[ECC_KEY_SIZE];
     // This field will be NULL if an HSM does not have a particular permission
-    uint8_t private_key[32];
+    uint8_t private_key[ECC_KEY_SIZE];
 } key_pair_t;
 
 // The public-private key pairs corresponding to each permission in a group.
@@ -52,8 +51,8 @@ typedef enum {
  * @return Returns the raw bytes of the private key if the HSM has permission.
  * Returns NULL otherwise.
  */
-static const uint8_t *get_private_key(uint16_t group_id,
-                                      permission_t permission_type);
+int get_private_key(uint16_t group_id, permission_t permission_type,
+                    ecc_key *private_key_out);
 /**
  * @brief Get the public key corresponding to a permission for a group.
  *
@@ -61,8 +60,8 @@ static const uint8_t *get_private_key(uint16_t group_id,
  * @param permisison_type The kind of permission (read, write, or receive)
  * @return Returns the raw bytes of the public key.
  */
-static const uint8_t *get_public_key(uint16_t group_id,
-                                     permission_t permission_type);
+int get_public_key(uint16_t group_id, permission_t permission_type,
+                   ecc_key *public_key_out);
 
 static bool permission_allowed(uint16_t group_id, permission_t perm);
 /** @brief Ensure the HSM has the requested permission

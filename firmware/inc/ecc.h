@@ -2,10 +2,15 @@
 #ifndef ECC_H
 #define ECC_H
 
+#define HAVE_ECC
+#define HAVE_SUPPORTED_CURVES
+
 #include <stdint.h>
 #include <wolfssl/wolfcrypt/ecc.h>
 #include <wolfssl/wolfcrypt/random.h>
 #include <wolfssl/wolfcrypt/settings.h>
+
+#define ECC_KEY_SIZE 32
 
 int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
                            ecc_key *public_key, uint8_t *additional_data,

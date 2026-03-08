@@ -1,4 +1,7 @@
-#include "aes_gcm.h"
+#define WOLFSSL_USER_SETTINGS
+
+#include "secure_filesystem.h"
+#include "crypto.h"
 #include "filesystem.h"
 #include "permission.h"
 #include "simple_flash.h"
@@ -7,10 +10,10 @@
 //
 // Read a protected file from persistent storage. Does not perform any
 // decryption or verification.
-int load_protected_file(slot_t, protected_file_t *dest) {
+int load_protected_file(slot_t slot, protected_file_t *dest) {
     file_t file;
-    if (read_file(slot, file) < 0) {
-        print_error("Failed to read file!");
+    if (read_file(slot, &file) < 0) {
+        // print_error("Failed to read file!");
         return -1;
     }
     uint8_t nonce[NONCE_SIZE];
@@ -19,7 +22,7 @@ int load_protected_file(slot_t, protected_file_t *dest) {
     uint8_t encrypted_contents[MAX_ENC_SIZE];
     uint8_t signature[SIGNATURE_SIZE];
 
-    uint8_t file_contents[MAX_CONTENTS_SIZE] = file.contents;
+    uint8_t *file_contents = file.contents;
     uint32_t offset = 0;
     memmove((uint8_t *)nonce, (const uint8_t *)file_contents + offset,
             NONCE_SIZE);
@@ -36,18 +39,17 @@ int load_protected_file(slot_t, protected_file_t *dest) {
     memmove((uint8_t *)signature, (const uint8_t *)file_contents + offset,
             SIGNATURE_SIZE);
 
-    *dest = {
-        .in_use = false,
-        .group_id = file.group_id,
-        .name = file.name,
-        .contents_len = file.contents_len,
-        .nonce = nonce,
-        .auth_tag = auth_tag,
-        .shared_secret = shared_secret,
-        .encrypted_contents = encrypted_contents,
-        .signature = signature,
-
-    }
+    // *dest = {
+    //     .in_use = false,
+    //     .group_id = file.group_id,
+    //     .name = file.name,
+    //     .contents_len = file.contents_len,
+    //     .nonce = nonce,
+    //     .auth_tag = auth_tag,
+    //     .shared_secret = shared_secret,
+    //     .encrypted_contents = encrypted_contents,
+    //     .signature = signature,
+    // };
 }
 
 /** @brief Read and decrypt a protected file from persistent storage into
@@ -65,11 +67,10 @@ int load_protected_file(slot_t, protected_file_t *dest) {
  * @return 0 upon success. A negative value otherwise.
  */
 
-/*
 int secure_read(slot_t slot, file_t *dest) {
     file_t file;
-    if (read_file(slot, file) < 0) {
-        print_error("Failed to read file!");
+    if (read_file(slot, &file) < 0) {
+        // print_error("Failed to read file!");
         return -1;
     }
 
@@ -77,9 +78,10 @@ int secure_read(slot_t slot, file_t *dest) {
     if (!permission_allowed(group_id, PERM_READ)) {
         return -1;
     }
-    uint8_t read_private_key[ECC_KEY_SIZE] =
-        get_private_key(group_id, PERM_READ);
-    uint16_t write_pub_key[ECC_KEY_SIZE] = get_public_key(group_id, PERM_WRITE);
+    ecc_key *read_private_key;
+    ecc_key *write_pub_key;
+    get_private_key(group_id, PERM_READ, read_private_key);
+    get_public_key(group_id, PERM_WRITE, write_pub_key);
 }
 
 /** @brief Securely encrypt, sign, and write a file into persistent storage.
