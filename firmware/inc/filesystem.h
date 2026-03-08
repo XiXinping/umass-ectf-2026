@@ -37,6 +37,8 @@ typedef uint16_t group_id_t;
 #define MAX_FILE_COUNT 8
 #define FILE_NAME_SIZE 32
 #define MAX_CONTENTS_SIZE 8192
+#define FILE_NAME_SIZE 32
+#define FILE_UUID_SIZE 16
 
 // _FLASH_FAT_START is defined by the functional specs to be the start of where
 // the FAT will be stored. It is address 0x0003a000, the last flash page. Your

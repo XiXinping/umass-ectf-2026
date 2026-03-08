@@ -64,6 +64,8 @@ int load_protected_file(slot_t, protected_file_t *dest) {
  *
  * @return 0 upon success. A negative value otherwise.
  */
+
+/*
 int secure_read(slot_t slot, file_t *dest) {
     file_t file;
     if (read_file(slot, file) < 0) {

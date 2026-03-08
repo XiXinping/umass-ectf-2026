@@ -5,7 +5,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
+#include "simple_flash.h"
+#include "simple_crypto.h"
+#include "host_messaging.h"
 
 void persist_timestamp_state(void);
 

@@ -7,6 +7,10 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <crypto.h>
+#include <stddef.h>
+// #include "helpers.h"
+#include "simple_flash.h"
 
 pin_storage_t g_pin_data;
 bool g_authenticated = false;
@@ -81,7 +85,6 @@ bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
     return true;
 }
 
-/* -------------------- Penalty -------------------- */
 
 bool penalty_active(void) {
     if (g_time_anomaly_detected)
@@ -90,7 +93,6 @@ bool penalty_active(void) {
     return now < g_pin_data.penalty_expiration_ms;
 }
 
-/* -------------------- PIN Verification -------------------- */
 
 security_status_t verify_pin(const uint8_t *pin, size_t len) {
     if (pin == NULL)
@@ -203,8 +205,8 @@ void persist_timestamp_state(void) {
     g_time_data.magic = TIMESTAMP_STORAGE_MAGIC;
     g_time_data.checksum = simple_checksum32(
         (const uint8_t *)&g_time_data, offsetof(timestamp_storage_t, checksum));
-    flash_erase_page(TIME_FLASH_ADDR);
-    flash_write(TIME_FLASH_ADDR, (uint8_t *)&g_time_data, sizeof(g_time_data));
+    flash_simple_erase_page(TIME_FLASH_ADDR);
+    flash_simple_write(TIME_FLASH_ADDR, (uint8_t *)&g_time_data, sizeof(g_time_data));
 }
 
 void load_timestamp_state(void) {
@@ -227,8 +229,8 @@ void persist_crypto_state(void) {
     g_crypto_data.magic = CRYPTO_STORAGE_MAGIC;
     g_crypto_data.checksum = simple_checksum32(
         (const uint8_t *)&g_crypto_data, offsetof(crypto_storage_t, checksum));
-    flash_erase_page(CRYPTO_FLASH_ADDR);
-    flash_write(CRYPTO_FLASH_ADDR, (uint8_t *)&g_crypto_data,
+    flash_simple_erase_page(CRYPTO_FLASH_ADDR);
+    flash_simple_write(CRYPTO_FLASH_ADDR, (uint8_t *)&g_crypto_data,
                 sizeof(g_crypto_data));
 }
 
@@ -277,3 +279,5 @@ void flush_timestamp_state_if_needed(void) {
         return;
     persist_timestamp_state();
 }
+
+*/

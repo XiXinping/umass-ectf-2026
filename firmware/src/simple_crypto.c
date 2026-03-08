@@ -14,10 +14,13 @@
 
 // #if CRYPTO_EXAMPLE
 
+#define WOLFSSL_USER_SETTINGS
+#include <wolfssl/wolfcrypt/settings.h>
 #include "simple_crypto.h"
 #include "security.h"
 #include <stdint.h>
 #include <string.h>
+#include <wolfssl/wolfcrypt/aes.h>
 
 /******************************** FUNCTION PROTOTYPES
  * ********************************/
@@ -70,7 +73,7 @@ int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *key,
     int result; // Library result
 
     // Ensure valid length
-    if (len <= 0 || len % BLOCK_SIZE)
+    if (len <= 0 || len % WC_AES_BLOCK_SIZE)
         return -1;
 
     // Set the key for encryption
@@ -79,7 +82,7 @@ int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *key,
         return result; // Report error
 
     // Encrypt each block
-    for (int i = 0; i < len; i += BLOCK_SIZE) {
+    for (int i = 0; i < len; i += WC_AES_BLOCK_SIZE) {
         result = wc_AesEncryptDirect(&ctx, ciphertext + i, plaintext + i);
         if (result != 0)
             return result; // Report error
@@ -106,7 +109,7 @@ int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key,
     int result; // Library result
 
     // Ensure valid length
-    if (len <= 0 || len % BLOCK_SIZE)
+    if (len <= 0 || len % WC_AES_BLOCK_SIZE)
         return -1;
 
     // Set the key for decryption
@@ -115,7 +118,7 @@ int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key,
         return result; // Report error
 
     // Decrypt each block
-    for (int i = 0; i < len; i += BLOCK_SIZE) {
+    for (int i = 0; i < len; i += WC_AES_BLOCK_SIZE) {
         result = wc_AesDecryptDirect(&ctx, plaintext + i, ciphertext + i);
         if (result != 0)
             return result; // Report error

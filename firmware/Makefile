@@ -67,10 +67,10 @@ endif
 NAME = hsm
 
 CFLAGS += -I.. \
-    -D__MSPM0L2228__ \
-    -O2 \
-    "-I$(MSPM0_SDK_INSTALL_DIR)/source/third_party/CMSIS/Core/Include" \
-    "-I$(MSPM0_SDK_INSTALL_DIR)/source" \
+	-D__MSPM0L2228__ \
+	-O2 \
+	"-I$(MSPM0_SDK_INSTALL_DIR)/source/third_party/CMSIS/Core/Include" \
+	"-I$(MSPM0_SDK_INSTALL_DIR)/source" \
 	"-I./inc" \
     -gdwarf-3 \
     -mcpu=cortex-m0plus \
@@ -80,42 +80,42 @@ CFLAGS += -I.. \
     -ferror-limit=500
 
 LFLAGS += "-l$(MSPM0_SDK_INSTALL_DIR)/source/ti/drivers/lib/ticlang/m0p/drivers_mspm0l122x_l222x.a" \
-    "-l$(MSPM0_SDK_INSTALL_DIR)/kernel/nortos/lib/ticlang/m0p/nortos_mspm0l122x_l222x.a" \
-    "-l$(MSPM0_SDK_INSTALL_DIR)/source/ti/driverlib/lib/ticlang/m0p/mspm0l122x_l222x/driverlib.a" \
-    "-L$(MSPM0_SDK_INSTALL_DIR)/source" \
-    -L.. \
-    ./$(LINKERFILE) \
-    "-Wl,-m,$(BUILDDIR)/$(NAME).map" \
-    -Wl,--rom_model \
-    -Wl,--warn_sections \
-    "-L$(TICLANG_ARMCOMPILER)/lib" \
-    -llibc.a
+	"-l$(MSPM0_SDK_INSTALL_DIR)/kernel/nortos/lib/ticlang/m0p/nortos_mspm0l122x_l222x.a" \
+	"-l$(MSPM0_SDK_INSTALL_DIR)/source/ti/driverlib/lib/ticlang/m0p/mspm0l122x_l222x/driverlib.a" \
+	"-L$(MSPM0_SDK_INSTALL_DIR)/source" \
+	-L.. \
+	./$(LINKERFILE) \
+	"-Wl,-m,$(BUILDDIR)/$(NAME).map" \
+	-Wl,--rom_model \
+	-Wl,--warn_sections \
+	"-L$(TICLANG_ARMCOMPILER)/lib" \
+	-llibc.a
 
 all: $(BUILDDIR)/$(NAME).elf $(BUILDDIR)/$(NAME).bin
 
 $(BUILDDIR):
-	@ mkdir -p $(BUILDDIR)
+	@mkdir -p $(BUILDDIR)
 
 $(BUILDDIR)/%.so: ./src/%.c | $(BUILDDIR)
-	@ echo Building $@
-	@ $(CC) $(CFLAGS) -c $< -o $@
+	@echo Building $@
+	@$(CC) $(CFLAGS) -c $< -o $@
 
 # if compiling with the crypto example, compile all crypto objects
 ifeq ($(CRYPTO_EXAMPLE), 1)
 $(WOLFSSL_INC)/%.o: $(WOLFSSL_INC)/%.c
-	@ echo Building $@
-	@ $(CC) $(CFLAGS) -c $< -o $@
+	@echo Building $@
+	@$(CC) $(CFLAGS) -c $< -o $@
 endif
 
 $(BUILDDIR)/$(NAME).elf: $(OBJECTS)
-	@ echo linking $@
-	@ $(LNK) -Wl,-u,_c_int00 $(OBJECTS)  $(LFLAGS) -o $(BUILDDIR)/$(NAME).elf
+	@echo linking $@
+	@$(LNK) -Wl,-u,_c_int00 $(OBJECTS)  $(LFLAGS) -o $(BUILDDIR)/$(NAME).elf
 
 $(BUILDDIR)/$(NAME).bin: $(BUILDDIR)/$(NAME).elf
-	@ $(OBJCOPY) -O binary $(BUILDDIR)/$(NAME).elf $(BUILDDIR)/$(NAME).bin
+	@$(OBJCOPY) -O binary $(BUILDDIR)/$(NAME).elf $(BUILDDIR)/$(NAME).bin
 
 clean:
-	@ echo Cleaning...
-	@ $(RM) $(OBJECTS) > $(DEVNULL) 2>&1
-	@ $(RM) $(NAME).elf > $(DEVNULL) 2>&1
-	@ $(RM) $(NAME).map > $(DEVNULL) 2>&1
+	@echo Cleaning...
+	@$(RM) $(OBJECTS) > $(DEVNULL) 2>&1
+	@$(RM) $(NAME).elf > $(DEVNULL) 2>&1
+	@$(RM) $(NAME).map > $(DEVNULL) 2>&1

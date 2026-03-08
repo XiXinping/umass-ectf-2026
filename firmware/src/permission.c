@@ -7,7 +7,7 @@
 #include <stdlib.h>
 
 #include <wolfssl/wolfcrypt/ecc.h>
-
+/*
 // Return of permission entry with the given group ID
 static const group_permission_t *permission_entry(uint16_t group_id) {
     const group_permission_t *entry = &permissions[group_id];
@@ -147,3 +147,4 @@ bool verify_remote_hsm(const uint8_t *msg, size_t msg_len,
         return false;
     return true;
 }
+*/

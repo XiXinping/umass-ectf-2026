@@ -9,8 +9,9 @@ static void persist_timestamp_state(void);
 
 static void secure_zero(void *buf, size_t len);
 
-static bool constant_time_compare(const uint8_t *a, const uint8_t *b,
-                                  size_t len);
+
+bool constant_time_compare(const uint8_t *a, const uint8_t *b, size_t len);
+
 
 static uint64_t safe_add_u64(uint64_t base, uint64_t delta);
 

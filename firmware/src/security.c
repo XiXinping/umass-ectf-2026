@@ -21,6 +21,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+/*
 bool check_pin(unsigned char *pin) {
     print_debug("Checking PIN\n");
 
@@ -111,3 +112,4 @@ void security_init(void) {
         g_session_expiration_ms = 0;
     }
 }
+*/

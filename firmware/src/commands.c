@@ -18,6 +18,7 @@
 #include "helpers.h"
 #include "host_messaging.h"
 #include "permission.h"
+#include "security.h"
 
 /* Host message command lengths */
 #define HOST_LIST_CMD_LEN PIN_LENGTH
@@ -438,12 +439,12 @@ static bool serialize_file_list(const file_metadata_t *files, uint32_t count,
     if (needed > out_cap || needed > UINT16_MAX)
         return false;
 
-    write_le32(out, count);
+    // write_le32(out, count);
 
     for (i = 0; i < count; i++) {
         uint32_t base = 4U + i * (1U + 2U + FILE_NAME_SIZE);
         out[base] = files[i].slot;
-        write_le16(&out[base + 1U], files[i].group_id);
+        // write_le16(&out[base + 1U], files[i].group_id);
         memcpy(&out[base + 3U], files[i].name, FILE_NAME_SIZE);
     }
 
