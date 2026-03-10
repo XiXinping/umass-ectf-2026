@@ -16,6 +16,22 @@ import json
 import argparse
 from dataclasses import dataclass
 
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+
+# Use PBKDF2 to generate a salted hash of the pin. Returns the hash alongside the salt.
+def hash_pin(pin: int) -> tuple[bytes]:
+    salt = os.urandom(16)
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=1_234_567,
+    )
+    key = kdf.derive(pin.to_bytes(3, "big"))
+    return (key, salt)
+
 
 @dataclass
 class Permission:
@@ -99,6 +115,8 @@ def secrets_to_c_header(
     secrets_json = json.loads(secrets)
     key_pairs = secrets_json["ecc_key_pairs"]
 
+    pin_hash, pin_salt = hash_pin(int(hsm_pin, 16))
+
     null_key = bytes(32)  # 32 zero bytes for absent private keys
 
     print(key_pairs)
@@ -106,11 +124,13 @@ def secrets_to_c_header(
         f.write("#ifndef __SECRETS_H__\n")
         f.write("#define __SECRETS_H__\n\n")
         f.write("#include <stdlib.h>\n\n")
+        f.write("#include <stdint.h>\n\n")
         f.write('#include "permission.h"\n')
         f.write('#include "security.h"\n\n')
-        f.write(f'#define HSM_PIN "{hsm_pin}"\n\n')
+        f.write(f"const uint8_t PIN_HASH[32] = {{\n{bytes_to_c_array(pin_hash)}\n}};\n")
+        f.write(f"const uint8_t PIN_SALT[16] = {{\n{bytes_to_c_array(pin_salt)}\n}};\n")
         f.write(f"#define NUM_PERMS {len(permissions)}\n\n")
-        f.write("const static group_permission_t permissions[NUM_PERMS] = {\n")
+        f.write("const group_permission_t permissions[NUM_PERMS] = {\n")
 
         for perm in permissions:
             group_keys = key_pairs[str(perm.group_id)]

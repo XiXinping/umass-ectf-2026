@@ -12,13 +12,14 @@ Copyright: Copyright (c) 2026 The MITRE Corporation
 
 import argparse
 import base64
-from enum import Enum, StrEnum
+from enum import StrEnum
 import json
 from pathlib import Path
 from cryptography.hazmat.primitives.asymmetric.x25519 import (
     X25519PrivateKey,
     X25519PublicKey,
 )
+
 from cryptography.hazmat.primitives import serialization
 
 # from loguru import logger
@@ -77,7 +78,10 @@ def gen_secrets(groups: list[int]) -> bytes:
     # Create the secrets object
     # You can change this to generate any secret material
     # The secrets file will never be shared with attackers
-    secrets = {"groups": groups, "ecc_key_pairs": ecc_key_pairs}
+    secrets = {
+        "groups": groups,
+        "ecc_key_pairs": ecc_key_pairs,
+    }
 
     # NOTE: if you choose to use JSON for your file type, you will not
     # be able to store binary data, and must either use a different file
