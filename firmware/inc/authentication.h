@@ -1,17 +1,17 @@
 #ifndef AUTHENTICATION_H
 #define AUTHENTICATION_H
 
+#include "permission.h"
 #include "security.h"
+#include <security.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
-#include "permission.h"
-#include <security.h>
 
 #define PIN_LENGTH 6
-#define PIN_SALT_SIZE 16
 #define PIN_HASH_SIZE 32
-#define PIN_PBKDF2_ITERATIONS 10000
+#define PIN_SALT_SIZE 16
+#define PIN_PBKDF2_ITERATIONS 1234567
 #define PIN_FAILURE_DELAY_MS 5000
 #define PIN_MAX_RETRIES 5
 #define AUTH_SESSION_TIMEOUT_MS 5000  // 5 seconds
@@ -27,7 +27,6 @@
  * Platform should map these ranges to the most restrictive policy available.
  */
 
- 
 #define SECURITY_FLASH_REGION_TIME_ADDR 0x00002000U
 #define SECURITY_FLASH_REGION_CRYPTO_ADDR 0x00003000U
 
@@ -36,18 +35,16 @@
 #define PIN_STORAGE_MAGIC 0x50494E53U       /* PINS */
 #define TIMESTAMP_DRIFT_TOLERANCE_MS 1000U
 
-#define SECURITY_FLASH_REGION_PIN_ADDR     0x00000000U
-#define SECURITY_FLASH_REGION_PERMS_ADDR   0x00001000U
-#define SECURITY_FLASH_REGION_TIME_ADDR    0x00002000U
-#define SECURITY_FLASH_REGION_CRYPTO_ADDR  0x00003000U
+#define SECURITY_FLASH_REGION_PIN_ADDR 0x00000000U
+#define SECURITY_FLASH_REGION_PERMS_ADDR 0x00001000U
+#define SECURITY_FLASH_REGION_TIME_ADDR 0x00002000U
+#define SECURITY_FLASH_REGION_CRYPTO_ADDR 0x00003000U
 
 #define TIME_FLASH_ADDR SECURITY_FLASH_REGION_TIME_ADDR
 #define CRYPTO_FLASH_ADDR SECURITY_FLASH_REGION_CRYPTO_ADDR
 
-#define PIN_FLASH_ADDR      SECURITY_FLASH_REGION_PIN_ADDR
-#define PERMS_FLASH_ADDR    SECURITY_FLASH_REGION_PERMS_ADDR
-
-
+#define PIN_FLASH_ADDR SECURITY_FLASH_REGION_PIN_ADDR
+#define PERMS_FLASH_ADDR SECURITY_FLASH_REGION_PERMS_ADDR
 
 /*
  * Optional platform hooks to lock/check clock config after boot.
@@ -96,7 +93,7 @@ security_status_t provision_pin(const uint8_t *pin, size_t len);
 
 /* Verify a PIN for protected actions; returns error codes, enforces penalty &
  * max retries */
-security_status_t verify_pin(const uint8_t *pin, size_t len);
+security_status_t verify_pin(uint8_t *pin, size_t len);
 
 bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
                               uint8_t *err);

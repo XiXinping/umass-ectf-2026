@@ -2,8 +2,8 @@
 #include "authentication.h"
 #include "crypto.h"
 #include "helpers.h"
+#include "secrets.h"
 #include "security.h"
-#include <crypto.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -11,6 +11,7 @@
 #include <string.h>
 // #include "helpers.h"
 #include "simple_flash.h"
+#include <wolfssl/wolfcrypt/pwdbased.h>
 
 pin_storage_t g_pin_data;
 bool g_authenticated = false;
@@ -21,8 +22,6 @@ crypto_storage_t g_crypto_data;
 bool g_time_anomaly_detected = false;
 
 // PIN Auth/Storage/Update
-
-
 
 bool pin_storage_valid(const pin_storage_t *state) {
     uint32_t checksum;
@@ -69,16 +68,16 @@ bool pin_is_lower_hex(const uint8_t *pin, size_t len) {
     return true;
 }
 
-bool authenticate_request_pin(const uint8_t *body, uint16_t body_len,
+bool authenticate_request_pin(const uint8_t *pin, uint16_t pin_len,
                               uint8_t *err) {
     if (err == NULL)
         return false;
-    if (body == NULL || body_len < PIN_LENGTH) {
+    if (pin == NULL || pin_len != PIN_LENGTH) {
         *err = (uint8_t)SECURITY_ERR_INVALID_LENGTH;
         return false;
     }
 
-    security_status_t st = security_verify_pin(body, PIN_LENGTH);
+    security_status_t st = verify_pin(pin, PIN_LENGTH);
     if (st != SECURITY_OK) {
         *err = status_to_error_code(st);
         return false;
@@ -94,15 +93,13 @@ bool penalty_active(void) {
     return now < g_pin_data.penalty_expiration_ms;
 }
 
-security_status_t verify_pin(const uint8_t *pin, size_t len) {
+security_status_t verify_pin(uint8_t *pin, size_t len) {
     if (pin == NULL)
-        return SECURITY_ERR_INVALID_LENGTH;
-    if (len != PIN_LENGTH)
         return SECURITY_ERR_INVALID_LENGTH;
     if (g_time_anomaly_detected)
         return SECURITY_ERR_TIME_ANOMALY;
-    if (security_penalty_active())
-        return SECURITY_ERR_PENALTY_ACTIVE;
+    // if (security_penalty_active())
+    //     return SECURITY_ERR_PENALTY_ACTIVE;
     if (g_pin_data.failed_attempts >= PIN_MAX_RETRIES)
         return SECURITY_ERR_MAX_RETRIES;
     if (!pin_is_lower_hex(pin, len))
@@ -110,8 +107,8 @@ security_status_t verify_pin(const uint8_t *pin, size_t len) {
 
     uint8_t derived[PIN_HASH_SIZE];
 
-    if (wc_PBKDF2(derived, pin, len, g_pin_data.salt, sizeof(g_pin_data.salt), 2048, sizeof(derived),
-        WC_SHA256) != 0) {
+    if (wc_PBKDF2(derived, pin, PIN_LENGTH, PIN_SALT, PIN_SALT_SIZE, 1234567,
+                  sizeof(derived), WC_SHA256) != 0) {
         return SECURITY_ERR_CRYPTO_FAIL;
     }
 
@@ -132,33 +129,33 @@ security_status_t verify_pin(const uint8_t *pin, size_t len) {
     return SECURITY_OK;
 }
 
-security_status_t provision_pin(const uint8_t *pin, size_t len) {
-    if (pin == NULL)
-        return SECURITY_ERR_INVALID_LENGTH;
-    if (len != PIN_LENGTH)
-        return SECURITY_ERR_INVALID_LENGTH;
-    if (!pin_is_lower_hex(pin, len))
-        return SECURITY_ERR_INVALID_PIN;
-    if (g_time_anomaly_detected)
-        return SECURITY_ERR_TIME_ANOMALY;
-    if (trng_generate(g_pin_data.salt, PIN_SALT_SIZE) != 0)
-        return SECURITY_ERR_CRYPTO_FAIL;
-
-    if (pbkdf2_sha256(pin, len, g_pin_data.salt, PIN_SALT_SIZE,
-                      PIN_PBKDF2_ITERATIONS, g_pin_data.hash,
-                      PIN_HASH_SIZE) != 0) {
-        return SECURITY_ERR_CRYPTO_FAIL;
-    }
-
-    g_pin_data.penalty_expiration_ms = 0;
-    g_pin_data.failed_attempts = 0;
-    g_pin_data.session_active = false;
-    g_pin_data.session_expiration_ms = 0;
-    g_authenticated = false;
-    g_session_expiration_ms = 0;
-    flush_timestamp_state_if_needed();
-    return SECURITY_OK;
-}
+// security_status_t provision_pin(const uint8_t *pin, size_t len) {
+//     if (pin == NULL)
+//         return SECURITY_ERR_INVALID_LENGTH;
+//     if (len != PIN_LENGTH)
+//         return SECURITY_ERR_INVALID_LENGTH;
+//     if (!pin_is_lower_hex(pin, len))
+//         return SECURITY_ERR_INVALID_PIN;
+//     if (g_time_anomaly_detected)
+//         return SECURITY_ERR_TIME_ANOMALY;
+//     if (trng_generate(g_pin_data.salt, PIN_SALT_SIZE) != 0)
+//         return SECURITY_ERR_CRYPTO_FAIL;
+//
+//     if (pbkdf2_sha256(pin, len, g_pin_data.salt, PIN_SALT_SIZE,
+//                       PIN_PBKDF2_ITERATIONS, g_pin_data.hash,
+//                       PIN_HASH_SIZE) != 0) {
+//         return SECURITY_ERR_CRYPTO_FAIL;
+//     }
+//
+//     g_pin_data.penalty_expiration_ms = 0;
+//     g_pin_data.failed_attempts = 0;
+//     g_pin_data.session_active = false;
+//     g_pin_data.session_expiration_ms = 0;
+//     g_authenticated = false;
+//     g_session_expiration_ms = 0;
+//     flush_timestamp_state_if_needed();
+//     return SECURITY_OK;
+// }
 
 bool verify_auth(void) {
     if (g_time_anomaly_detected) {

@@ -21,7 +21,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 
 # Use PBKDF2 to generate a salted hash of the pin. Returns the hash alongside the salt.
-def hash_pin(pin: int) -> tuple[bytes]:
+def hash_pin(pin: str) -> tuple[bytes]:
     salt = os.urandom(16)
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
@@ -29,7 +29,7 @@ def hash_pin(pin: int) -> tuple[bytes]:
         salt=salt,
         iterations=1_234_567,
     )
-    key = kdf.derive(pin.to_bytes(3, "big"))
+    key = kdf.derive(pin.encode("ascii"))
     return (key, salt)
 
 
@@ -115,7 +115,7 @@ def secrets_to_c_header(
     secrets_json = json.loads(secrets)
     key_pairs = secrets_json["ecc_key_pairs"]
 
-    pin_hash, pin_salt = hash_pin(int(hsm_pin, 16))
+    pin_hash, pin_salt = hash_pin(hsm_pin)
 
     null_key = bytes(32)  # 32 zero bytes for absent private keys
 
