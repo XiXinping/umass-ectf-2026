@@ -22,6 +22,8 @@ bool g_time_anomaly_detected = false;
 
 // PIN Auth/Storage/Update
 
+
+
 bool pin_storage_valid(const pin_storage_t *state) {
     uint32_t checksum;
 
@@ -107,8 +109,9 @@ security_status_t verify_pin(const uint8_t *pin, size_t len) {
         return register_failed_pin_attempt();
 
     uint8_t derived[PIN_HASH_SIZE];
-    if (pbkdf2_sha256(pin, len, g_pin_data.salt, PIN_SALT_SIZE,
-                      PIN_PBKDF2_ITERATIONS, derived, PIN_HASH_SIZE) != 0) {
+
+    if (wc_PBKDF2(derived, pin, len, g_pin_data.salt, sizeof(g_pin_data.salt), 2048, sizeof(derived),
+        WC_SHA256) != 0) {
         return SECURITY_ERR_CRYPTO_FAIL;
     }
 
@@ -119,13 +122,13 @@ security_status_t verify_pin(const uint8_t *pin, size_t len) {
         return register_failed_pin_attempt();
 
     g_authenticated = true;
-    g_pin_data.failed_attempts = 0;
+    // g_pin_data.failed_attempts = 0;
     g_pin_data.penalty_expiration_ms = 0;
     g_session_expiration_ms =
         safe_add_u64(monotonic_time_ms(), AUTH_SESSION_TIMEOUT_MS);
     g_pin_data.session_active = true;
     g_pin_data.session_expiration_ms = g_session_expiration_ms;
-    flush_timestamp_state_if_needed();
+    // flush_timestamp_state_if_needed();
     return SECURITY_OK;
 }
 

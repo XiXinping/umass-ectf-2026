@@ -1,7 +1,7 @@
 DEVNULL = /dev/null
 # MSPM0_SDK_INSTALL_DIR ?= $(abspath ../../../../../..)
-MSPM0_SDK_INSTALL_DIR = $(HOME)/.ti/mspm0_sdk_2_09_00_01
-TICLANG_ARMCOMPILER = $(HOME)/.ti/ti-cgt-armllvm_5.0.0.STS
+MSPM0_SDK_INSTALL_DIR = /Applications/ti/mspm0_sdk_2_09_00_01
+TICLANG_ARMCOMPILER = /Applications/ti/ti-cgt-armllvm_5.0.0.STS
 
 # include $(MSPM0_SDK_INSTALL_DIR)/tools/imports_mak/imports.mak.linux
 
