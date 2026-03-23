@@ -18,7 +18,7 @@ bool check_pin(unsigned char *pin) {
     print_debug("Checking PIN\n");
     if(verify_pin(pin, PIN_LENGTH) != 0)
     {
-        register_failed_pin_attempt();
+        // register_failed_pin_attempt();
         return false;
     }
     else {
