@@ -12,15 +12,22 @@
  */
 #include "security.h"
 #include "host_messaging.h"
+#include "authenetication.h"
 
 bool check_pin(unsigned char *pin) {
     print_debug("Checking PIN\n");
-
+    if(verify_pin(pin, PIN_LENGTH) != 0)
+    {
+        register_failed_pin_attempt();
+        return false;
+    }
+    else {
     // TODO: the reference design doesn't implement *ANY* security.
     // This function currently does nothing. Your team should add the
     // appropriate security checks here to implement the security
     // requirements.
-    return true;
+        return true;
+    }
 }
 
 bool validate_permission(uint16_t group_id, permission_enum_t perm) {
