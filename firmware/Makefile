@@ -1,6 +1,7 @@
+DEVNULL = /dev/null
+
 MSPM0_SDK_INSTALL_DIR ?= $(abspath ../../../../../..)
 
-include $(MSPM0_SDK_INSTALL_DIR)/tools/imports_mak/imports.mak.linux
 
 CC = "$(TICLANG_ARMCOMPILER)/bin/tiarmclang"
 LNK = "$(TICLANG_ARMCOMPILER)/bin/tiarmclang"
@@ -44,6 +45,7 @@ CFLAGS += -DWOLF_CRYPTO_CB
 
 WOLFSSL_INC = wolfssl/wolfcrypt/src
 CFLAGS += -I./wolfssl
+CFLAGS += -I./inc
 
 # we need to build these objects for the simple crypto example
 OBJECTS += $(WOLFSSL_INC)/aes.o $(WOLFSSL_INC)/hash.o

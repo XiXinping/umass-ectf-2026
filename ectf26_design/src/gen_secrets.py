@@ -14,7 +14,7 @@ import argparse
 import json
 from pathlib import Path
 
-from loguru import logger
+# from loguru import logger
 
 
 def gen_secrets(groups: list[int]) -> bytes:
@@ -51,8 +51,7 @@ def gen_secrets(groups: list[int]) -> bytes:
 
 
 def parse_args():
-    """Define and parse the command line arguments
-    """
+    """Define and parse the command line arguments"""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--force",
@@ -88,7 +87,7 @@ def main():
     # Attackers will NOT have access to the output of this, but feel free to remove
     #
     # NOTE: Printing sensitive data is generally not good security practice
-    logger.debug(f"Generated secrets: {secrets}")
+    print(f"Generated secrets: {secrets}")
 
     # Open the file, erroring if the file exists unless the --force arg is provided
     with open(args.secrets_file, "wb" if args.force else "xb") as f:
@@ -96,7 +95,7 @@ def main():
         f.write(secrets)
 
     # For your own debugging. Feel free to remove
-    logger.success(f"Wrote secrets to {str(args.secrets_file.absolute())}")
+    print(f"Wrote secrets to {str(args.secrets_file.absolute())}")
 
 
 if __name__ == "__main__":
