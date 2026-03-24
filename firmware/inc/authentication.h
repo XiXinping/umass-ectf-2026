@@ -78,6 +78,17 @@ typedef struct {
                        // tampered with
 } timestamp_storage_t;
 
+typedef enum {
+    SECURITY_OK = 0,
+    SECURITY_ERR_INVALID_PIN = 1,
+    SECURITY_ERR_PENALTY_ACTIVE = 2,
+    SECURITY_ERR_INVALID_LENGTH = 3,
+    SECURITY_ERR_CRYPTO_FAIL = 4,
+    SECURITY_ERR_MAX_RETRIES = 5,
+    SECURITY_ERR_TIME_ANOMALY = 6,
+    SECURITY_ERR_BUFFER = 7,
+} security_status
+
 /* Load the PIN from persistent storage */
 void load_pin();
 

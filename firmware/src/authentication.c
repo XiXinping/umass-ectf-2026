@@ -13,8 +13,8 @@
 #include "simple_flash.h"
 #include <wolfssl/wolfcrypt/pwdbased.h>
 
-pin_storage_t g_pin_data;
-bool g_authenticated = false;
+// pin_storage_t g_pin_data;
+// bool g_authenticated = false;
 // uint64_t g_session_expiration_ms = 0;
 // uint64_t g_last_time_ms = 0;
 // timestamp_storage_t g_time_data;
@@ -59,7 +59,7 @@ bool pin_storage_valid(const pin_storage_t *state) {
     return checksum == state->checksum;
 }
     */
-
+/*
 security_status_t register_failed_pin_attempt(void) {
     // uint64_t now = monotonic_time_ms();
     g_pin_data.failed_attempts++;
@@ -71,6 +71,7 @@ security_status_t register_failed_pin_attempt(void) {
     // flush_timestamp_state_if_needed();
     return SECURITY_ERR_INVALID_PIN;
 }
+    */
 bool pin_is_lower_hex(const uint8_t *pin, size_t len) {
     size_t i;
 
@@ -118,14 +119,14 @@ bool penalty_active(void) {
 security_status_t verify_pin(uint8_t *pin, size_t len) {
     if (pin == NULL)
         return SECURITY_ERR_INVALID_LENGTH;
-    if (g_time_anomaly_detected)
-        return SECURITY_ERR_TIME_ANOMALY;
+    // if (g_time_anomaly_detected)
+    //    return SECURITY_ERR_TIME_ANOMALY;
     // if (security_penalty_active())
     //     return SECURITY_ERR_PENALTY_ACTIVE;
-    if (g_pin_data.failed_attempts >= PIN_MAX_RETRIES)
-        return SECURITY_ERR_MAX_RETRIES;
-    if (!pin_is_lower_hex(pin, len))
-        return register_failed_pin_attempt();
+    // if (g_pin_data.failed_attempts >= PIN_MAX_RETRIES)
+    //    return SECURITY_ERR_MAX_RETRIES;
+    // if (!pin_is_lower_hex(pin, len))
+    //    return register_failed_pin_attempt();
 
     uint8_t derived[PIN_HASH_SIZE];
 
@@ -137,14 +138,15 @@ security_status_t verify_pin(uint8_t *pin, size_t len) {
     bool match = constant_time_compare(derived, g_pin_data.hash, PIN_HASH_SIZE);
     secure_zero(derived, sizeof(derived));
 
+    /*
     if (!match)
         return register_failed_pin_attempt();
 
     g_authenticated = true;
     // g_pin_data.failed_attempts = 0;
     // g_pin_data.penalty_expiration_ms = 0;
-    g_session_expiration_ms =
-        safe_add_u64(monotonic_time_ms(), AUTH_SESSION_TIMEOUT_MS);
+    //g_session_expiration_ms =
+    //    safe_add_u64(monotonic_time_ms(), AUTH_SESSION_TIMEOUT_MS);
     g_pin_data.session_active = true;
    // g_pin_data.session_expiration_ms = g_session_expiration_ms;
     // flush_timestamp_state_if_needed();
