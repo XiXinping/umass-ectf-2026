@@ -121,8 +121,8 @@ def secrets_to_c_header(
 
     print(key_pairs)
     with open(os.path.join(path, "secrets.h"), "w") as f:
-        f.write("#ifndef __SECRETS_H__\n")
-        f.write("#define __SECRETS_H__\n\n")
+        f.write("#ifndef SECRETS_H\n")
+        f.write("#define SECRETS_H\n\n")
         f.write("#include <stdlib.h>\n\n")
         f.write("#include <stdint.h>\n\n")
         f.write('#include "permission.h"\n')
@@ -181,7 +181,7 @@ def secrets_to_c_header(
             f.write("    },\n")
 
         f.write("};\n")
-        f.write("\n#endif  // __SECRETS_H__\n")
+        f.write("\n#endif  // SECRETS_H\n")
 
 
 if __name__ == "__main__":

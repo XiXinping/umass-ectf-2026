@@ -17,6 +17,7 @@
 #include <stdio.h>
 
 #include "commands.h"
+#include "crypto.h"
 #include "filesystem.h"
 #include "host_messaging.h"
 // #include "simple_flash.h"
@@ -169,6 +170,26 @@ int main(void) {
 
     // initialize the device
     init();
+
+    uint8_t i_have_a_dream[256] =
+        "I am happy to join with you today in what will go down in history as "
+        "the greatest demonstration for freedom in the history of our nation. "
+        "Five score years ago, a great American, in whose symbolic shadow we "
+        "stand today, signed the Emancipation Proclamation";
+
+    uint8_t aes_key[32] = {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
+                           11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+                           22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
+
+    uint8_t iv[12] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+
+    uint8_t i_have_a_dream_enc[256];
+    uint8_t auth_tag[16];
+
+    aes_gcm_encrypt(i_have_a_dream, 256, aes_key, iv, NULL, 0,
+                    i_have_a_dream_enc, auth_tag);
+
+    print_debug((char *)i_have_a_dream_enc);
 
     // process commands forever
     while (1) {
