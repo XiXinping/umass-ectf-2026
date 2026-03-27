@@ -70,10 +70,11 @@ int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
         return -1;
     }
 
-    byte iv[GCM_NONCE_MID_SZ];
-    gen_rand_block(&rng, iv,
-                   GCM_NONCE_MID_SZ); // Replace this call with gen_random_block
+    memset(iv_out, 0, GCM_NONCE_MID_SZ);
 
+    gen_rand_block(&rng, iv_out,
+                   GCM_NONCE_MID_SZ); // Replace this call with gen_random_block
+    iv_out 
     if (aes_gcm_encrypt(plaintext, plaintext_size, symmetric_key, iv,
                         additional_data, additional_data_size, ciphertext_out,
                         auth_tag_out) != 0) {
