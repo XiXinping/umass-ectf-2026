@@ -74,7 +74,6 @@ int ecc_asymmetric_encrypt(uint8_t *plaintext, size_t plaintext_size,
 
     gen_rand_block(&rng, iv_out,
                    GCM_NONCE_MID_SZ); // Replace this call with gen_random_block
-    iv_out 
     if (aes_gcm_encrypt(plaintext, plaintext_size, symmetric_key, iv,
                         additional_data, additional_data_size, ciphertext_out,
                         auth_tag_out) != 0) {
