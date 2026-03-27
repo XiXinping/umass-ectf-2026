@@ -18,24 +18,13 @@
 #include <string.h>
 
 #include "commands.h"
+#include "crypto.h"
 #include "filesystem.h"
 #include "host_messaging.h"
 #include "simple_flash.h"
 #include "simple_uart.h"
 #include "status_led.h"
 #include "ti_msp_dl_config.h"
-
-/* Code between this #ifdef and the subsequent #endif will
- *  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
- *  the Makefile. */
-#ifdef CRYPTO_EXAMPLE
-/* The simple crypto example included with the reference design is
- *  intended to be an example of how you *may* use cryptography in your
- *  design. You are not limited nor required to use this interface in
- *  your design. It is recommended for newer teams to start by only using
- *  the simple crypto library until they have a working design. */
-#include "simple_crypto.h"
-#endif // CRYPTO_EXAMPLE
 
 /**********************************************************
  ************************ GLOBALS *************************
@@ -106,45 +95,6 @@ void boot_flag(void) {
     print_debug(output_buf);
 }
 
-/* Code between this #ifdef and the subsequent #endif will
- *  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
- *  the projectk.mk file. */
-#ifdef CRYPTO_EXAMPLE
-void crypto_example(void) {
-    // Example of how to utilize included simple_crypto.h
-
-    // This string is 16 bytes long including null terminator
-    // This is the block size of included symmetric encryption
-    char *data = "Crypto Example!";
-    uint8_t ciphertext[BLOCK_SIZE];
-    uint8_t key[KEY_SIZE];
-    uint8_t hash_out[HASH_SIZE];
-    uint8_t decrypted[BLOCK_SIZE];
-
-    char output_buf[128] = {0};
-
-    // Zero out the key
-    bzero(key, BLOCK_SIZE);
-
-    // Encrypt example data and print out
-    encrypt_sym((uint8_t *)data, BLOCK_SIZE, key, ciphertext);
-    print_debug("Encrypted data: \n");
-    print_hex_debug(ciphertext, BLOCK_SIZE);
-
-    // Hash example encryption results
-    hash(ciphertext, BLOCK_SIZE, hash_out);
-
-    // Output hash result
-    print_debug("Hash result: \n");
-    print_hex_debug(hash_out, HASH_SIZE);
-
-    // Decrypt the encrypted message and print out
-    decrypt_sym(ciphertext, BLOCK_SIZE, key, decrypted);
-    sprintf(output_buf, "Decrypted message: %s\n", decrypted);
-    print_debug(output_buf);
-}
-#endif // CRYPTO_EXAMPLE
-
 /**********************************************************
  ********************* CORE FUNCTIONS *********************
  **********************************************************/
@@ -168,11 +118,27 @@ int main(void) {
     int result;
     uint16_t pkt_len;
 
-    char i_have_a_dream[256] =
+    uint8_t i_have_a_dream[256] =
         "I am happy to join with you today in what will go down in history as "
-        "the greatest demonstration for freedom in the history of our nation."
+        "the greatest demonstration for freedom in the history of our nation. "
         "Five score years ago, a great American, in whose symbolic shadow we "
-        "stand today, signed the Emancipation Proclamation. ";
+        "stand today, signed the Emancipation Proclamation";
+
+    uint8_t aes_key[32] = {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
+                           11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+                           22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
+
+    uint8_t iv[12] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+
+    uint8_t i_have_a_dream_enc[256];
+    uint8_t auth_tag[16];
+
+    print_debug((char *)i_have_a_dream);
+
+    aes_gcm_encrypt(i_have_a_dream, 256, aes_key, iv, NULL, 0,
+                    i_have_a_dream_enc, auth_tag);
+
+    print_debug((char *)i_have_a_dream_enc);
 
     // initialize the device
     init();
@@ -210,12 +176,6 @@ int main(void) {
 
         // Handle list command
         case LIST_MSG:
-
-#ifdef CRYPTO_EXAMPLE
-            // Run the crypto example
-            // TODO: Remove this from your design
-            crypto_example();
-#endif // CRYPTO_EXAMPLE
 
             // Print the boot flag
             // TODO: Remove this from your design

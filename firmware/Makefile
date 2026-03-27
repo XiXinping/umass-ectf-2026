@@ -12,7 +12,6 @@ LINKERFILE = "firmware.ld"
 
 # to download wolfssl for the simple crypto example, `cd ./firmware/ && git clone https://github.com/wolfSSL/wolfssl`
 # then set this variable to 1
-CRYPTO_EXAMPLE = 0
 
 OBJECTS = $(BUILDDIR)/HSM.so \
     $(BUILDDIR)/simple_uart.so \
@@ -21,11 +20,11 @@ OBJECTS = $(BUILDDIR)/HSM.so \
     $(BUILDDIR)/simple_flash.so \
     $(BUILDDIR)/host_messaging.so \
     $(BUILDDIR)/security.so \
+    $(BUILDDIR)/crypto.so \
     $(BUILDDIR)/filesystem.so \
     $(BUILDDIR)/commands.so
 
-ifeq ($(CRYPTO_EXAMPLE), 1)
-OBJECTS += $(BUILDDIR)/simple_crypto.so
+# OBJECTS += $(BUILDDIR)/simple_crypto.so
 
 # change C flags
 CFLAGS += -DCRYPTO_EXAMPLE=1
@@ -43,14 +42,38 @@ CFLAGS += -DNO_DEV_RANDOM
 CFLAGS += -DWC_NO_DEFAULT_DEVID
 CFLAGS += -DWOLF_CRYPTO_CB
 
-WOLFSSL_INC = wolfssl/wolfcrypt/src
+# Ensure we have the proper crypto components
+CFLAGS += -DWOLFSSL_AES_GCM
+CFLAGS += -DHAVE_AESGCM
+CFLAGS += -DWOLFSSL_SHA256
+CFLAGS += -DWOLFSSL_SHA512
+CFLAGS += -DHAVE_ECC
+CFLAGS += -DHAVE_SUPPORTED_CURVES
+
+
+# Side-channel attack resistance
+CFLAGS += -DTFM_TIMING_RESISTANT
+CFLAGS += -DECC_TIMING_RESISTANT
+CFLAGS += -DWOLFSSL_AESGCM_SCA_PROTECT
+CFLAGS += -DWOLFSSL_AES_GCM
+CFLAGS += -DWC_RSA_BLINDING
+CFLAGS += -DWC_AES_BITSLICED
+
+
+WOLFSSL_INC = ./wolfssl/wolfcrypt/src
 CFLAGS += -I./wolfssl
 CFLAGS += -I./inc
+CFLAGS += -I./inc/wolfssl
 
 # we need to build these objects for the simple crypto example
 OBJECTS += $(WOLFSSL_INC)/aes.o $(WOLFSSL_INC)/hash.o
 OBJECTS += $(WOLFSSL_INC)/md5.o $(WOLFSSL_INC)/cryptocb.o
-endif
+
+OBJECTS += wolfssl/wolfcrypt/src/aes.o \
+           wolfssl/wolfcrypt/src/wc_port.o \
+           wolfssl/wolfcrypt/src/memory.o \
+           wolfssl/wolfcrypt/src/error.o \
+           wolfssl/wolfcrypt/src/logging.o
 
 NAME = hsm
 
@@ -88,11 +111,13 @@ $(BUILDDIR)/%.so: ./src/%.c | $(BUILDDIR)
 	@ $(CC) $(CFLAGS) -c $< -o $@
 
 # if compiling with the crypto example, compile all crypto objects
-ifeq ($(CRYPTO_EXAMPLE), 1)
 $(WOLFSSL_INC)/%.o: $(WOLFSSL_INC)/%.c
 	@ echo Building $@
 	@ $(CC) $(CFLAGS) -c $< -o $@
-endif
+
+firmware/wolfssl/wolfcrypt/src/aes.o: firmware/wolfssl/wolfcrypt/src/aes.c
+	@ echo Building $@
+	@ $(CC) $(CFLAGS) -c wolfssl/wolfcrypt/src/aes.c -o wolfssl/wolfcrypt/src/aes.o
 
 $(BUILDDIR)/$(NAME).elf: $(OBJECTS)
 	@ echo linking $@
