@@ -18,7 +18,7 @@ int buffer_store_oldfile(slot_t slot, uint8_t* file_buffer, size_t file_size, ui
     const filesystem_entry_t *metadata; 
 
     if(is_slot_in_use(slot)) {
-        return -1; // add graceful return logic 
+        return -1;  
     }
     read_file(slot, file);
     metadata = get_file_metadata(slot);
@@ -48,6 +48,42 @@ int buffer_store_oldfile(slot_t slot, uint8_t* file_buffer, size_t file_size, ui
 
     return 0;
 }
+
+int buffer_store_oldfile_combined(slot_t slot, uint8_t* buffer, size_t size) {
+    // TODO: Buffer overflow/null checks, null checks for fields
+
+    file_t* file;
+    const filesystem_entry_t *metadata; 
+
+    if(is_slot_in_use(slot)) {
+        return -1;  
+    }
+    read_file(slot, file);
+    metadata = get_file_metadata(slot);
+
+    int offset = 0;
+
+    // Fills file_buffer with file contents
+    //__attribute__((aligned(16))) 
+    //uint8_t buffer[file->contents_len + (16 - (file->contents_len % 16))]; USE SIZE IN COMMANDS.C instead
+    memset(buffer, 0, size);
+    
+    
+    memcpy(buffer, file->contents, file->contents_len);
+    offset += file->contents_len;
+        
+    memcpy(buffer, &file->group_id, sizeof(group_id_t));
+    offset += sizeof(group_id_t);
+
+    memcpy(buffer + offset, metadata->uuid, UUID_SIZE);
+    offset += UUID_SIZE;
+
+    memcpy(buffer + offset, file->name, MAX_NAME_SIZE);
+    offset += MAX_NAME_SIZE;
+
+    return 0;
+}
+
 /**  
  ASSUMPTION: File is in transsit
  Zero out buffer 
@@ -65,7 +101,7 @@ int buffer_store_newfile(file_t* file, uint8_t* UUID, uint8_t* file_buffer, size
     // uint8_t buffer[file->contents_len + (16 - (file->contents_len % 16))];
     memset(file_buffer, 0, file_size);
 
-    memcpy(file_buffer, file->contents, file->contents_len);
+    memcpy(file_buffer, file->contents, file_size);
     //offset += file->contents_len;
 
 
@@ -83,6 +119,37 @@ int buffer_store_newfile(file_t* file, uint8_t* UUID, uint8_t* file_buffer, size
 
     return 0;
 }
+
+
+int buffer_store_newfile_combined(slot_t slot, uint8_t* buffer, size_t size) {
+    // TODO: Buffer overflow/null checks, null checks for fields
+
+    int offset = 0;
+
+    file_t* file;
+    const filesystem_entry_t *metadata; 
+
+    // Fills file_buffer with file contents
+    //__attribute__((aligned(16))) 
+    //uint8_t buffer[file->contents_len + (16 - (file->contents_len % 16))]; USE SIZE IN COMMANDS.C instead
+    memset(buffer, 0, size);
+    
+    
+    memcpy(buffer, file->contents, file->contents_len);
+    offset += file->contents_len;
+        
+    memcpy(buffer, &file->group_id, sizeof(group_id_t));
+    offset += sizeof(group_id_t);
+
+    memcpy(buffer + offset, metadata->uuid, UUID_SIZE);
+    offset += UUID_SIZE;
+
+    memcpy(buffer + offset, file->name, MAX_NAME_SIZE);
+    offset += MAX_NAME_SIZE;
+
+    return 0;
+}
+
 
     //__attribute__((aligned(4))) 
     // 
