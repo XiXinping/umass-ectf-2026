@@ -1,20 +1,39 @@
-"""
-Author: Ben Janis
-Date: 2026
-
-This source file is part of an example system for MITRE's 2026 Embedded CTF
-(eCTF). This code is being provided only for educational purposes for the 2026 MITRE
-eCTF competition, and may not meet MITRE standards for quality. Use this code at your
-own risk!
-
-Copyright: Copyright (c) 2026 The MITRE Corporation
-"""
-
 import argparse
+import base64
+from enum import StrEnum
 import json
 from pathlib import Path
+from cryptography.hazmat.primitives.asymmetric.x25519 import (
+    X25519PrivateKey,
+    X25519PublicKey,
+)
+
+from cryptography.hazmat.primitives import serialization
 
 # from loguru import logger
+
+
+# Generates a public and private key pair using Curve25519. The resulting keys are
+# stored as a bytes object.
+def gen_ecc_key_pair() -> dict[str, bytes]:
+    private_key: X25519PrivateKey = X25519PrivateKey.generate()
+    public_key: X25519PublicKey = private_key.public_key()
+    private_key_bytes: bytes = private_key.private_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PrivateFormat.Raw,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    public_key_bytes: bytes = public_key.public_bytes_raw()
+    return {
+        "private": base64.b64encode(private_key_bytes).decode("ascii"),
+        "public": base64.b64encode(public_key_bytes).decode("ascii"),
+    }
+
+
+class PermissionType(StrEnum):
+    READ = "read"
+    WRITE = "write"
+    RECEIVE = "receive"
 
 
 def gen_secrets(groups: list[int]) -> bytes:
@@ -32,15 +51,24 @@ def gen_secrets(groups: list[int]) -> bytes:
 
     :returns: Contents of the secrets file
     """
-    # TODO: Update this function to generate any system-wide secrets needed by
-    #   your design
+
+    ecc_key_pairs: dict[int, dict[str, dict[str, bytes]]] = {}
+    for group_id in groups:
+        group_keys: dict[str, dict[str, bytes]] = {}
+        for perm_type in PermissionType:
+            key_pair = gen_ecc_key_pair()
+            group_keys[str(perm_type)] = {
+                "public": key_pair["public"],
+                "private": key_pair["private"],
+            }
+        ecc_key_pairs[group_id] = group_keys
 
     # Create the secrets object
     # You can change this to generate any secret material
     # The secrets file will never be shared with attackers
     secrets = {
         "groups": groups,
-        "some_secrets": "EXAMPLE",
+        "ecc_key_pairs": ecc_key_pairs,
     }
 
     # NOTE: if you choose to use JSON for your file type, you will not
@@ -87,7 +115,7 @@ def main():
     # Attackers will NOT have access to the output of this, but feel free to remove
     #
     # NOTE: Printing sensitive data is generally not good security practice
-    print(f"Generated secrets: {secrets}")
+    # logger.debug(f"Generated secrets: {secrets}")
 
     # Open the file, erroring if the file exists unless the --force arg is provided
     with open(args.secrets_file, "wb" if args.force else "xb") as f:
@@ -95,8 +123,9 @@ def main():
         f.write(secrets)
 
     # For your own debugging. Feel free to remove
-    print(f"Wrote secrets to {str(args.secrets_file.absolute())}")
+    # logger.success(f"Wrote secrets to {str(args.secrets_file.absolute())}")
 
 
 if __name__ == "__main__":
     main()
+

@@ -21,6 +21,7 @@ panic-semihosting = "0.6.0"
 rand_core = "0.9.3"
 # Pin: fixed 1.30.0 (edition 2024) causes rustc ICE on thumbv6m
 fixed = "=1.29.0"
+crypto = { version = "0.5.1", features = ["elliptic-curve"] }
 
 
 
