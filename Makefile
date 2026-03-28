@@ -12,6 +12,12 @@ docker:
 docker-nc:
 	docker build --no-cache -t build-hsm ./firmware/
 
+docker-sodium:
+	docker build -t build-hsm-sodium ./firmware-sodium/
+
+docker-sodium-nc:
+	docker build --no-cache -t build-hsm-sodium ./firmware-sodium/
+
 global.secrets:
 	@if [ -z "${GROUPS}" ]; then echo 'Must pass valid groups like:\r\n\tmake global.secrets GROUPS=1234\r\nor, if multiple groups defined:\r\n\tmake global.secrets GROUPS="1234 5678"' && false; fi
 	uvx --with-editable ./ectf26_design --from ectf26_design secrets global.secrets $(GROUPS)
@@ -20,6 +26,11 @@ global.secrets:
 	@if [ ! -f global.secrets ]; then echo 'Must generate global secrets first with\r\n\tmake global.secrets' && false; fi
 	@if [ -z "${PIN}" ] || [ -z "${PERMS}" ]; then echo "Must provide PIN and permissions for HSM. For example:\r\n\tmake $@ PIN=123456 PERMS='1234=RWC'" && false; fi
 	docker run --rm -v ./firmware:/hsm -v ./global.secrets:/secrets/global.secrets:ro -v ./$@:/out -e HSM_PIN=${PIN} -e PERMISSIONS='${PERMS}' build-hsm $(BUILDDIR)
+
+%.hsm-sodium:
+	@if [ ! -f global.secrets ]; then echo 'Must generate global secrets first with\r\n\tmake global.secrets' && false; fi
+	@if [ -z "${PIN}" ] || [ -z "${PERMS}" ]; then echo "Must provide PIN and permissions for HSM. For example:\r\n\tmake $@ PIN=123456 PERMS='1234=RWC'" && false; fi
+	docker run --rm -v ./firmware-sodium:/hsm -v ./global.secrets:/secrets/global.secrets:ro -v ./$@:/out -e HSM_PIN=${PIN} -e PERMISSIONS='${PERMS}' -e SODIUM_PREFIX=${SODIUM_PREFIX} build-hsm-sodium $(BUILDDIR)
 
 clean:
 	rm -rfI *.hsm/ global.secrets

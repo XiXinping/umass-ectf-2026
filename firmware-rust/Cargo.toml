@@ -1,0 +1,19 @@
+[package]
+name = "hsm-rust"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hsm_rust"
+crate-type = ["staticlib"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[dependencies]
+embassy-mspm0 = { git = "https://github.com/embassy-rs/embassy", package = "embassy-mspm0", features = ["mspm0l2228", "rt"] }
+embedded-io = "0.6"
