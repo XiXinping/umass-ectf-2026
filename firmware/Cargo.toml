@@ -1,0 +1,33 @@
+[package]
+edition = "2024"
+name = "ectf-2026"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+publish = false
+default-run = "ectf-2026"
+
+[dependencies]
+embassy-mspm0 = {git = "https://github.com/embassy-rs/embassy", version = "0.1.0", features = ["mspm0l2228pn", "defmt", "time-driver-any"] }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", version = "0.9.0",features = ["arch-cortex-m", "executor-thread", "executor-interrupt"] }
+embassy-sync = {git = "https://github.com/embassy-rs/embassy", version = "0.7.2", features = ["defmt"] }
+embassy-time = {git = "https://github.com/embassy-rs/embassy", version = "0.5.0", features = ["defmt"] }
+panic-halt = "1.0.0"
+cortex-m = { version = "0.7.6", features = ["inline-asm", "critical-section-single-core"] }
+cortex-m-rt = { version = "0.7.0"}
+defmt = "1.0.1"
+defmt-rtt = "1.0.0"
+panic-probe = { version = "1.0.0", features = ["print-defmt"] }
+panic-semihosting = "0.6.0"
+rand_core = "0.9.3"
+# Pin: fixed 1.30.0 (edition 2024) causes rustc ICE on thumbv6m
+fixed = "=1.29.0"
+
+
+
+[profile.release]
+debug = 2
+
+[package.metadata.embassy]
+build = [
+  { target = "thumbv6m-none-eabi", artifact-dir = "out/examples/mspm0l2228" }
+]
