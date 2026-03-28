@@ -185,4 +185,4 @@ if __name__ == "__main__":
 
     args = parse_args()
     perms = PermissionList.deserialize(args.permissions)
-    secrets_to_rust_file(perms, "./src/", args.hsm_pin, args.secrets.read())
+    secrets_to_rust_file(perms, "./firmware/src/", args.hsm_pin, args.secrets.read())
