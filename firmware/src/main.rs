@@ -7,6 +7,7 @@ mod flash;
 mod host;
 // mod permission;
 // mod secrets;
+mod authentication;
 
 use defmt::*;
 use embassy_mspm0::uart::{Config, Uart};
