@@ -5,6 +5,7 @@ mod command;
 mod filesystem;
 mod flash;
 mod host;
+mod authentication;
 
 use defmt::*;
 use embassy_mspm0::uart::{Config, Uart};
