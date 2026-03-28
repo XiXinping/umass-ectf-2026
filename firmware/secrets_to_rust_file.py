@@ -94,9 +94,8 @@ def secrets_to_rust_file(
     with open(os.path.join(path, "secrets.rs"), "w") as f:
         f.write("// Auto-generated — do not edit by hand\n")
         f.write("#![allow(dead_code)]\n\n")
-        f.write("use crate::permission::GroupPermission;\n")
-        f.write("use crate::security::{KeyPair, KeyPairSet};\n\n")
-
+        f.write("use crate::permission::{GroupPermission, KeyPair, KeyPairSet};\n")
+        f.write("use crypto::elliptic_curve::{SecretKey, PublicKey};\n")
         # ── PIN_HASH ──
         f.write(
             f"pub const PIN_HASH: [u8; 32] = [\n"
@@ -150,16 +149,18 @@ def secrets_to_rust_file(
             ]:
                 f.write(f"            {key_name}: KeyPair {{\n")
                 f.write(
-                    f"                public_key: [\n"
+                    f"                public_key: PublicKey::from_sec1_bytes([\n"
                     f"{bytes_to_rust_array(pub)}\n"
-                    f"                ],\n"
+                    f"                ]),\n"
                 )
-                priv_bytes = priv if priv is not None else null_key
-                f.write(
-                    f"                private_key: [\n"
-                    f"{bytes_to_rust_array(priv_bytes)}\n"
-                    f"                ],\n"
-                )
+                if priv is None:
+                    f.write("                private_key: None,\n")
+                else:
+                    f.write(
+                        f"                private_key: Some(SecretKey::from_sec1_bytes([\n"
+                        f"{bytes_to_rust_array(priv)}\n"
+                        f"                ])),\n"
+                    )
                 f.write("            },\n")
 
             f.write("        },\n")

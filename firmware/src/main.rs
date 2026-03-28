@@ -5,8 +5,8 @@ mod command;
 mod filesystem;
 mod flash;
 mod host;
-mod permission;
-mod secrets;
+// mod permission;
+// mod secrets;
 
 use defmt::*;
 use embassy_mspm0::uart::{Config, Uart};
