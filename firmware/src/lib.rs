@@ -8,4 +8,5 @@ pub mod filesystem;
 pub mod flash;
 pub mod host;
 pub mod permission;
+pub mod random;
 pub mod secrets;
