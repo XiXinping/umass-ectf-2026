@@ -24,6 +24,7 @@ fixed = "=1.29.0"
 crypto = { version = "0.5.1", features = ["elliptic-curve"] }
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "heapless"] }
 getrandom = { version = "0.2", features = ["custom"] }
+hex = "0.4.3"
 
 # #![no_std]
 

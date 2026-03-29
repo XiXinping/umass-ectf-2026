@@ -15,7 +15,7 @@ pub fn aes_gcm_encrypt(plaintext: &[u8],
     let nonce = Nonce::from_slice(iv);
     let cipher = Aes256Gcm::new(key);
     
-    const BUFFER_SIZE: usize = 8192 + 16;
+    const BUFFER_SIZE: usize = 8192 + 16 + 48;
     let mut buffer: Vec<u8, BUFFER_SIZE> = Vec::new();
 
     buffer.extend_from_slice(plaintext).map_err(|_| aes_gcm::Error)?;
@@ -44,7 +44,7 @@ pub fn aes_gcm_decrypt(ciphertext: &[u8],
     let cipher = Aes256Gcm::new(key);
     
 
-    const BUFFER_SIZE: usize = 8192 + 16;
+    const BUFFER_SIZE: usize = 8192 + 16 + 48;
     let mut buffer: Vec<u8, BUFFER_SIZE> = Vec::new(); 
 
     buffer.extend_from_slice(ciphertext).map_err(|_| aes_gcm::Error)?;
