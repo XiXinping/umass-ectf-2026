@@ -53,6 +53,10 @@ getrandom = { version = "0.2", features = ["custom"] }
 embedded-test = { version = "0.7.1", features = ["defmt"] }
 hex-literal = "1.1.0"
 heapless = "0.9.2"
+hex = { version = "0.4", default-features = false }
+
+# #![no_std]
+
 
 
 [profile.release]
