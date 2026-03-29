@@ -1,9 +1,9 @@
-//! rng.rs — Random number generation with hardware TRNG seeding a ChaCha20 CSPRNG.
-//!
-//! Cargo.toml dependencies:
-//!   embassy-mspm0 = { version = "...", features = ["mspm0l2228"] }
-//!   chacha20       = { version = "0.9", default-features = false }
-//!   defmt          = "0.3"          # (optional, for logging on embedded)
+// rng.rs — Random number generation with hardware TRNG seeding a ChaCha20 CSPRNG.
+//
+// Cargo.toml dependencies:
+//   embassy-mspm0 = { version = "...", features = ["mspm0l2228"] }
+//   chacha20       = { version = "0.9", default-features = false }
+//   defmt          = "0.3"          # (optional, for logging on embedded)
 
 #![no_std]
 
