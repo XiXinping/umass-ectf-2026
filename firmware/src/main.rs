@@ -9,6 +9,7 @@ mod flash;
 mod host;
 mod permission;
 mod secrets;
+mod random;
 
 use crate::authentication::verify_pin;
 use crate::secrets::PIN_HASH;
