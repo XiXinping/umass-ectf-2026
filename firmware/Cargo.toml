@@ -22,6 +22,10 @@ rand_core = "0.9.3"
 # Pin: fixed 1.30.0 (edition 2024) causes rustc ICE on thumbv6m
 fixed = "=1.29.0"
 crypto = { version = "0.5.1", features = ["elliptic-curve"] }
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "heapless"] }
+getrandom = { version = "0.2", features = ["custom"] }
+
+# #![no_std]
 
 
 
