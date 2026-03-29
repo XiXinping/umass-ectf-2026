@@ -1,8 +1,8 @@
 use pbkdf2::pbkdf2;
 use sha2::Sha256;
+use hmac::Hmac;
 use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
-use subtle::ConstantTimeEq;
 
 pub enum SecurityStatus {
     Success,
@@ -37,7 +37,7 @@ pub fn verify_pin(pin: &[u8], pin_salt: &[u8], expected_hash: &[u8]) -> Security
 
     let mut derived  = [0u8; PIN_HASH_SIZE];
 
-    if pbkdf2::<Sha256>(pin, pin_salt, 1_234_567, &mut derived).is_err() {
+    if pbkdf2::<Hmac<Sha256>>(pin, pin_salt, 1_234_567, &mut derived).is_err() {
         return SecurityStatus::AuthFail;
     }
 

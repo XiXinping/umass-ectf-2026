@@ -1,3 +1,4 @@
+
 use firmware::authentication;
 use hex_literal::hex;
 
@@ -8,7 +9,7 @@ fn test_verify_pin_valid() {
     let hash: &[u8; 32] = &hex!("9cd794df1ac380ae42117aebcddb148d261871d8aa06b8f87c92108230d6a388");
 
     let result = authentication::verify_pin(pin, salt, hash);
-    assert!(matches!(result, timeguard::SecurityStatus::Success));
+    assert!(matches!(result, authenetication::SecurityStatus::Success));
 }
 
 fn test_verify_pin_invalid_pin_length() {
@@ -17,7 +18,7 @@ fn test_verify_pin_invalid_pin_length() {
     let hash: &[u8; 32] = &hex!("9cd794df1ac380ae42117aebcddb148d261871d8aa06b8f87c92108230d6a388");
     
     let result = authentication::verify_pin(pin, salt, hash);
-    assert!(matches!(result, timeguard::SecurityStatus::InvalidLength));
+    assert!(matches!(result, authenetication::SecurityStatus::InvalidLength));
 }
 
 fn test_verify_pin_invalid_pin() {
@@ -26,7 +27,7 @@ fn test_verify_pin_invalid_pin() {
     let hash: &[u8; 32] = &hex!("9cd794df1ac380ae42117aebcddb148d261871d8aa06b8f87c92108230d6a388");
 
     let result = authentication::verify_pin(pin, salt, hash);
-    assert!(matches!(result, timeguard::SecurityStatus::AuthFail));
+    assert!(matches!(result, authenetication::SecurityStatus::AuthFail));
 }
 
 fn test_verify_pin_invalid_hash() {
@@ -35,7 +36,7 @@ fn test_verify_pin_invalid_hash() {
     let hash: &[u8; 32] = &hex!("9cd794df1ac380ae42117aebcddb148d261871d8aa06b8f87c92108230d6a389");
 
     let result = authentication::verify_pin(pin, salt, hash);
-    assert!(matches!(result, timeguard::SecurityStatus::AuthFail));
+    assert!(matches!(result, authenetication::SecurityStatus::AuthFail));
 }
 
 fn test_verify_pin_invalid_salt() {
@@ -44,7 +45,7 @@ fn test_verify_pin_invalid_salt() {
     let hash: &[u8; 32] = &hex!("9cd794df1ac380ae42117aebcddb148d261871d8aa06b8f87c92108230d6a388");
 
     let result = authentication::verify_pin(pin, salt, hash);
-    assert!(matches!(result, timeguard::SecurityStatus::AuthFail));
+    assert!(matches!(result, authenetication::SecurityStatus::AuthFail));
 }
 
 fn test_verify_empty_pin() {
@@ -53,5 +54,5 @@ fn test_verify_empty_pin() {
     let hash: &[u8; 32] = &hex!("9cd794df1ac380ae42117aebcddb148d261871d8aa06b8f87c92108230d6a388");
 
     let result = authentication::verify_pin(pin, salt, hash);
-    assert!(matches!(result, timeguard::SecurityStatus::InvalidLength));
+    assert!(matches!(result, authenetication::SecurityStatus::InvalidLength));
 }
