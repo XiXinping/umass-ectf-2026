@@ -1,12 +1,18 @@
 #![no_std]
 #![no_main]
 
+mod authentication;
 mod command;
+mod crypto;
 mod filesystem;
 mod flash;
 mod host;
-mod crypto;
+mod permission;
+mod secrets;
 
+use crate::authentication::verify_pin;
+use crate::secrets::PIN_HASH;
+use crate::secrets::PIN_SALT;
 use defmt::*;
 use embassy_mspm0::uart::{Config, Uart};
 use {defmt_rtt as _, panic_probe as _};
@@ -51,6 +57,9 @@ fn main() -> ! {
     let mut hw_flash = flash::HwFlash;
     let mut fs = filesystem::Filesystem::init(&hw_flash);
 
+    let pin_attempt = "abcdef";
+    verify_pin(pin_attempt.as_bytes(), &PIN_SALT, &PIN_HASH);
+
     let mut buf = [0u8; MAX_MSG_SIZE];
     loop {
         info!("ooga booga");
@@ -72,5 +81,20 @@ fn main() -> ! {
                 host.print_error("read failed");
             }
         }
+    }
+}
+
+#[cfg(test)]
+#[embedded_test::tests]
+mod tests {
+    use crate::authentication::{SecurityStatus, verify_pin};
+    use crate::secrets::{PIN_HASH, PIN_SALT};
+    #[test]
+    pub fn test_verify_pin() {
+        let pin_attempt = "abc123";
+        assert_eq!(
+            verify_pin(pin_attempt.as_bytes(), &PIN_SALT, &PIN_HASH),
+            SecurityStatus::verify_pin
+        );
     }
 }

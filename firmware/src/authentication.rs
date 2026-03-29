@@ -1,22 +1,19 @@
+use hmac::Hmac;
 use pbkdf2::pbkdf2;
 use sha2::Sha256;
-use hmac::Hmac;
 use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
+
+pub const PIN_HASH_SIZE: usize = 32;
+pub const PIN_SALT_SIZE: usize = 16;
+pub const PIN_LENGTH: usize = 6;
 
 pub enum SecurityStatus {
     Success,
     InvalidLength,
     AuthFail,
 }
-
-pub const PIN_HASH_SIZE: usize = 32;
-
-pub const PIN_SALT_SIZE: usize = 16;
-
-pub const PIN_LENGTH: usize = 6;
-
-/* 
+/*
 pub fn pin_is_lower_hex(pin: &[u8]) -> bool {
     if pin.len() != PIN_LENGTH {
         return false;
@@ -35,7 +32,7 @@ pub fn verify_pin(pin: &[u8], pin_salt: &[u8], expected_hash: &[u8]) -> Security
         return SecurityStatus::InvalidLength;
     }
 
-    let mut derived  = [0u8; PIN_HASH_SIZE];
+    let mut derived = [0u8; PIN_HASH_SIZE];
 
     if pbkdf2::<Hmac<Sha256>>(pin, pin_salt, 1_234_567, &mut derived).is_err() {
         return SecurityStatus::AuthFail;
@@ -51,3 +48,4 @@ pub fn verify_pin(pin: &[u8], pin_salt: &[u8], expected_hash: &[u8]) -> Security
         SecurityStatus::AuthFail
     }
 }
+

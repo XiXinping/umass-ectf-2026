@@ -1,8 +1,8 @@
-use elliptic_curve::{PublicKey, SecretKey};
+use elliptic_curve::{Curve, PublicKey, SecretKey};
 
-pub struct KeyPair {
+pub struct KeyPair<C: Curve> {
     pub public_key: PublicKey, // adjust size to match your actual key length
-    pub private_key: Option<SecretKey>,
+    pub private_key: Option<SecretKey<C>>,
 }
 
 pub struct KeyPairSet {
@@ -12,7 +12,7 @@ pub struct KeyPairSet {
 }
 
 // permission.rs
-pub struct GroupPermission {
+pub struct GroupPermission<C: Curve> {
     pub group_id: u16,
     pub read_perm: bool,
     pub write_perm: bool,
