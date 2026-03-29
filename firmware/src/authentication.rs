@@ -34,7 +34,10 @@ pub fn verify_pin(pin: &[u8], pin_salt: &[u8], expected_hash: &[u8]) -> Security
 
     let mut derived = [0u8; PIN_HASH_SIZE];
 
-    if pbkdf2::<Hmac<Sha256>>(pin, pin_salt, 1_234_567, &mut derived).is_err() {
+    // if pbkdf2::<Hmac<Sha256>>(pin, pin_salt, 1_234_567, &mut derived).is_err() {
+    //     return SecurityStatus::AuthFail;
+    // }
+    if pbkdf2::<Hmac<Sha256>>(pin, pin_salt, 5, &mut derived).is_err() {
         return SecurityStatus::AuthFail;
     }
 
@@ -48,4 +51,3 @@ pub fn verify_pin(pin: &[u8], pin_salt: &[u8], expected_hash: &[u8]) -> Security
         SecurityStatus::AuthFail
     }
 }
-

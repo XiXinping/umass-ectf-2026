@@ -1,20 +1,14 @@
 #![no_std]
 #![no_main]
 
-mod authentication;
-mod command;
-mod crypto;
-mod filesystem;
-mod flash;
-mod host;
-mod permission;
-mod secrets;
-mod random;
-
-use crate::authentication::verify_pin;
-use crate::secrets::PIN_HASH;
-use crate::secrets::PIN_SALT;
 use defmt::*;
+use ectf_2026::authentication::verify_pin;
+use ectf_2026::command;
+use ectf_2026::filesystem::Filesystem;
+use ectf_2026::flash::HwFlash;
+use ectf_2026::host::HostUart;
+use ectf_2026::secrets::PIN_HASH;
+use ectf_2026::secrets::PIN_SALT;
 use embassy_mspm0::uart::{Config, Uart};
 use {defmt_rtt as _, panic_probe as _};
 
@@ -48,15 +42,15 @@ fn main() -> ! {
 
     // UART0 — host/control interface
     let uart0 = unwrap!(Uart::new_blocking(p.UART0, p.PA11, p.PA10, config));
-    let mut host = host::HostUart::new(uart0);
+    let mut host = HostUart::new(uart0);
     host.print_debug("Hello Embassy World!");
 
     // UART1 — transfer interface (neighbor HSM): PA8 TX, PA9 RX
     let uart1 = unwrap!(Uart::new_blocking(p.UART1, p.PA9, p.PA8, config));
-    let mut transfer = host::HostUart::new(uart1);
+    let mut transfer = HostUart::new(uart1);
 
-    let mut hw_flash = flash::HwFlash;
-    let mut fs = filesystem::Filesystem::init(&hw_flash);
+    let mut hw_flash = HwFlash;
+    let mut fs = Filesystem::init(&hw_flash);
 
     let pin_attempt = "abcdef";
     verify_pin(pin_attempt.as_bytes(), &PIN_SALT, &PIN_HASH);
@@ -82,20 +76,5 @@ fn main() -> ! {
                 host.print_error("read failed");
             }
         }
-    }
-}
-
-#[cfg(test)]
-#[embedded_test::tests]
-mod tests {
-    use crate::authentication::{SecurityStatus, verify_pin};
-    use crate::secrets::{PIN_HASH, PIN_SALT};
-    #[test]
-    pub fn test_verify_pin() {
-        let pin_attempt = "abc123";
-        assert_eq!(
-            verify_pin(pin_attempt.as_bytes(), &PIN_SALT, &PIN_HASH),
-            SecurityStatus::verify_pin
-        );
     }
 }

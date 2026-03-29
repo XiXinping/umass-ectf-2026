@@ -6,11 +6,25 @@ license = "MIT OR Apache-2.0"
 publish = false
 default-run = "ectf-2026"
 
+[lib]
+harness = false
+test = false
+
+[[test]]
+name = "pin_testing"
+harness = false
+
+[[bin]]
+name = "ectf-2026"
+test = false
+
 [dependencies]
-embassy-mspm0 = {git = "https://github.com/embassy-rs/embassy", version = "0.1.0", features = ["mspm0l2228pn", "defmt", "time-driver-any"] }
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", version = "0.9.0",features = ["arch-cortex-m", "executor-thread", "executor-interrupt"] }
-embassy-sync = {git = "https://github.com/embassy-rs/embassy", version = "0.7.2", features = ["defmt"] }
+embassy-executor = { version = "0.10.0", features = ["platform-cortex-m", "executor-thread", "executor-interrupt"] }
+embassy-sync = { version = "0.8.0", features = ["defmt"] }
+embassy-mspm0 = { git = "https://github.com/embassy-rs/embassy", version = "0.1.0", features = ["mspm0l2228pn", "defmt", "time-driver-any"] }
 embassy-time = {git = "https://github.com/embassy-rs/embassy", version = "0.5.0", features = ["defmt"] }
+# embassy-executor = { git = "https://github.com/embassy-rs/embassy", version = "0.9.0",features = ["arch-cortex-m", "executor-thread", "executor-interrupt"] }
+# embassy-sync = { git = "https://github.com/embassy-rs/embassy", version = "0.7.2", features = ["defmt"] }
 panic-halt = "1.0.0"
 chacha20 = { version = "0.9", default-features = false }
 cortex-m = { version = "0.7.6", features = ["inline-asm", "critical-section-single-core"] }
@@ -31,11 +45,8 @@ subtle = { version = "2.6.1", default-features = false }
 zeroize = { version = "1.8", default-features = false }
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "heapless"] }
 getrandom = { version = "0.2", features = ["custom"] }
-embedded-test = "0.7.1"
+embedded-test = { version = "0.7.1", features = ["defmt"] }
 hex-literal = "1.1.0"
-
-# #![no_std]
-
 
 
 [profile.release]

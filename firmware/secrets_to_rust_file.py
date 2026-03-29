@@ -15,7 +15,7 @@ def hash_pin(pin: str) -> tuple[bytes]:
         algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
-        iterations=1_234_567,
+        iterations=5,
     )
     key = kdf.derive(pin.encode("ascii"))
     return (key, salt)
