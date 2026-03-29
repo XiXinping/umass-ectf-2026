@@ -2,17 +2,18 @@
 #![no_main]
 
 use defmt_rtt as _;
-// use panic_probe as _;
 
 #[cfg(test)]
 #[embedded_test::tests]
-mod tests {
+mod pin_tests {
     use core::{assert, matches};
     // use defmt::println;
     use ectf_2026::authentication;
     use ectf_2026::authentication::SecurityStatus;
     // use embassy_time::{Duration, Instant, Timer};
     use hex_literal::hex;
+
+    // use panic_probe as _;
 
     #[test]
     fn test_verify_pin_valid() {
