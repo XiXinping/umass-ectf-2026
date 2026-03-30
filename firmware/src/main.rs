@@ -10,6 +10,8 @@ use ectf_2026::host::HostUart;
 use ectf_2026::secrets::PIN_HASH;
 use ectf_2026::secrets::PIN_SALT;
 use embassy_mspm0::uart::{Config, Uart};
+
+// use defmt_rtt as _;
 use {defmt_rtt as _, panic_probe as _};
 
 /// Custom NMI handler — clears SRAM ECC DED NMI and returns.
