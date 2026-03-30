@@ -7,8 +7,6 @@ mod rng_tests {
     use defmt::println;
     use ectf_2026::random::SecureRng;
 
-    // use panic_probe as _;
-
     #[test]
     fn test_random_bytes() {
         let mut rng = SecureRng::new().unwrap();

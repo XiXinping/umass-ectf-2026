@@ -18,6 +18,9 @@ harness = false
 name = "rng_test"
 harness = false
 
+[[test]]
+name = "gcm_test"
+harness = false
 
 [[bin]]
 name = "ectf-2026"
@@ -28,8 +31,6 @@ embassy-executor = { version = "0.10.0", features = ["platform-cortex-m", "execu
 embassy-sync = { version = "0.8.0", features = ["defmt"] }
 embassy-mspm0 = { git = "https://github.com/embassy-rs/embassy", version = "0.1.0", features = ["mspm0l2228pn", "defmt", "time-driver-any"] }
 embassy-time = {git = "https://github.com/embassy-rs/embassy", version = "0.5.0", features = ["defmt"] }
-# embassy-executor = { git = "https://github.com/embassy-rs/embassy", version = "0.9.0",features = ["arch-cortex-m", "executor-thread", "executor-interrupt"] }
-# embassy-sync = { git = "https://github.com/embassy-rs/embassy", version = "0.7.2", features = ["defmt"] }
 panic-halt = "1.0.0"
 panic-probe = { version = "1.0.0", features = ["print-defmt"] }
 chacha20 = { version = "0.9", default-features = false }
@@ -52,7 +53,7 @@ aes-gcm = { version = "0.10", default-features = false, features = ["aes", "heap
 getrandom = { version = "0.2", features = ["custom"] }
 embedded-test = { version = "0.7.1", features = ["defmt"] }
 hex-literal = "1.1.0"
-heapless = "0.9.2"
+heapless = { version = "0.9.2", features = ["defmt", "zeroize"]}
 hex = { version = "0.4", default-features = false }
 
 # #![no_std]
