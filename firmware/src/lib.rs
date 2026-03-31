@@ -4,7 +4,7 @@
 use defmt_rtt as _;
 
 pub mod authentication;
-pub mod challenge_response_auth;
+pub mod challenge_response;
 pub mod command;
 pub mod crypto;
 pub mod filesystem;
