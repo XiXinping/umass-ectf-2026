@@ -1,4 +1,8 @@
-use crate::{filesystem::MAX_CONTENTS_SIZE, random::SecureRng};
+use crate::{
+    challenge_response::{AuthError, PRIVATE_KEY_SIZE},
+    filesystem::MAX_CONTENTS_SIZE,
+    random::SecureRng,
+};
 use aes_gcm::{
     Aes256Gcm, Key, Nonce, Tag as GcmTag,
     aead::{AeadInPlace, KeyInit, heapless::Vec as AesVec},
@@ -8,7 +12,6 @@ use hkdf::Hkdf;
 use sha2::Sha256;
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
-use crate::challenge_response_auth;
 use p256::ecdsa::SigningKey;
 
 use p256::ecdsa::{
@@ -140,25 +143,27 @@ pub fn assymetric_decrypt(
     Ok(plaintext)
 }
 
-pub fn ecc_sign_file_digest(digest: &[u8], private_key_bytes: &[u8; challenge_response_auth::PRIVATE_KEY_SIZE]) -> Result<Signature, challenge_response_auth::AuthError>{
-    let signing_key = SigningKey::from_slice(private_key_bytes)
-        .map_err(|_| challenge_response_auth::AuthError::KeyImportFailed)?;
+pub fn ecc_sign_file_digest(
+    digest: &[u8],
+    private_key_bytes: &[u8; PRIVATE_KEY_SIZE],
+) -> Result<Signature, AuthError> {
+    let signing_key =
+        SigningKey::from_slice(private_key_bytes).map_err(|_| AuthError::KeyImportFailed)?;
 
     let signature: Signature = signing_key.sign(digest);
 
     Ok(signature)
-
 }
 
 pub fn ecc_verify_file_digest(
     signature: &Signature,
     digest: &[u8],
     public_key_bytes: &[u8],
-) -> Result<(), challenge_response_auth::AuthError> {
-    let verifying_key = VerifyingKey::from_sec1_bytes(public_key_bytes)
-        .map_err(|_| challenge_response_auth::AuthError::KeyImportFailed)?;
+) -> Result<(), AuthError> {
+    let verifying_key =
+        VerifyingKey::from_sec1_bytes(public_key_bytes).map_err(|_| AuthError::KeyImportFailed)?;
 
     verifying_key
         .verify(digest, signature)
-        .map_err(|_| challenge_response_auth::AuthError::VerificationFailed)
+        .map_err(|_| AuthError::VerificationFailed)
 }
