@@ -2,10 +2,12 @@
 
 use chacha20::ChaCha20;
 use chacha20::cipher::{KeyIvInit, StreamCipher};
+use core::num::NonZeroU32;
 use embassy_mspm0::peripherals;
 use embassy_mspm0::trng::Trng;
 use heapless::Vec;
-use rand_core::TryRngCore;
+use rand_core::{CryptoRng, RngCore};
+use rand_core_09::TryRngCore;
 use zeroize::Zeroize;
 
 /// Errors that can occur during random number generation.
@@ -64,6 +66,19 @@ pub struct SecureRng {
     cipher: ChaCha20,
 }
 
+// impl Deref for SecureRng {
+//     type Target = ChaCha20;
+//     fn deref(&self) -> &Self::Target {
+//         &self.cipher
+//     }
+// }
+//
+// impl DerefMut for SecureRng {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.cipher
+//     }
+// }
+
 impl SecureRng {
     // ChaCha20 takes a 256-bit key (32 bytes) and a 96-bit nonce (12 bytes).
     const KEY_LEN: usize = 32;
@@ -93,6 +108,16 @@ impl SecureRng {
         Ok(Vec::from(output))
     }
 
+    /// Generate N random bytes from the CSPRNG.
+    pub fn random_array<const N: usize>(&mut self) -> Result<[u8; N], RngError> {
+        // Zeroed plaintext → the ciphertext *is* the keystream.
+        let mut output = [0; N];
+        self.cipher
+            .try_apply_keystream(&mut output)
+            .map_err(|_| RngError::GenerateFailed)?;
+        Ok(output)
+    }
+
     /// Explicitly destroy the CSPRNG state.
     ///
     /// In Rust the struct is also cleaned up when it goes out of scope, but
@@ -105,3 +130,41 @@ impl SecureRng {
         Ok(())
     }
 }
+
+impl RngCore for SecureRng {
+    fn next_u32(&mut self) -> u32 {
+        let mut bytes: [u8; 4] = [0; 4];
+        loop {
+            match self.cipher.try_write_keystream(&mut bytes) {
+                Ok(()) => break,
+                Err(_) => continue,
+            }
+        }
+        u32::from_le_bytes(bytes)
+    }
+    fn next_u64(&mut self) -> u64 {
+        let mut bytes: [u8; 8] = [0; 8];
+        loop {
+            match self.cipher.try_write_keystream(&mut bytes) {
+                Ok(()) => break,
+                Err(_) => continue,
+            }
+        }
+        u64::from_le_bytes(bytes)
+    }
+
+    fn fill_bytes(&mut self, dst: &mut [u8]) {
+        dst.iter_mut().for_each(|b| *b = 0);
+        self.cipher.apply_keystream(dst);
+    }
+
+    fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), rand_core::Error> {
+        dst.iter_mut().for_each(|b| *b = 0);
+        self.cipher
+            .try_apply_keystream(dst)
+            .map_err(|_| rand_core::Error::from(NonZeroU32::new(1).unwrap()))?;
+        Ok(())
+    }
+}
+
+impl CryptoRng for SecureRng {}
