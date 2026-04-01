@@ -6,7 +6,7 @@ use aes_gcm::{
 use heapless::Vec;
 use hkdf::Hkdf;
 use sha2::Sha256;
-use x25519_dalek::{EphemeralSecret, PublicKey, SharedSecret};
+use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
 use crate::challenge_response_auth;
 use p256::ecdsa::SigningKey;
@@ -21,16 +21,21 @@ pub enum CryptoError {
     /// Input is too large
     InvalidInput,
     /// Failure in securely generating random numbers
-    RngFailure,
+    RngError,
     /// Failed to derive assymetric key
-    AsymmetricKey,
+    AsymmetricKeyError,
+    /// Failed to encrypt using AES-GCM
+    AesGcmEncryptError,
+    /// Failed to decrypt using AES-GCM
+    AesGcmDecryptError,
 }
 
 /// A struct containing the result of calling assymetric_encrypt(). The result of a hybrid
 /// encryption contains the ciphertext, the AES shared secret, and an AES-GCM authentication tag.
-struct HybridEncrypted {
+pub struct HybridEncrypted {
     ciphertext: Vec<u8, MAX_CONTENTS_SIZE>,
-    shared_secret: SharedSecret,
+    nonce: [u8; 12],
+    cipher_public_key: PublicKey,
     auth_tag: GcmTag,
 }
 
@@ -80,25 +85,59 @@ pub fn aes_gcm_decrypt(
     Ok(buffer)
 }
 
-// Encrypts the contents of a file using assymetric cryptography. The output contains the
-// ciphertext, the shared secret, and an auth tag
-// Currently initializes a new TRNG instance every call. This may be changed.
+/// Encrypts the contents of a file using assymetric cryptography. The output contains the
+/// ciphertext, the shared secret, and an auth tag
+/// Currently initializes a new TRNG instance every call. This may be changed.
 pub fn assymetric_encrypt(
-    plaintext: Vec<u8, MAX_CONTENTS_SIZE>,
+    plaintext: &Vec<u8, MAX_CONTENTS_SIZE>,
     public_key: &PublicKey,
-    // ) -> Result<HybridEncrypted, CryptoError> {
-) -> Result<(), CryptoError> {
+) -> Result<HybridEncrypted, CryptoError> {
     // Can just generate 32 bytes using random_bytes() and use that as the ephemeral secret
-    let rng = SecureRng::new().map_err(|_| CryptoError::RngFailure)?;
-    let ephemeral_secret = EphemeralSecret::random_from_rng(rng);
+    let mut rng = SecureRng::new().map_err(|_| CryptoError::RngError)?;
+    let ephemeral_secret = EphemeralSecret::random_from_rng(&mut rng);
+    // Creates a public key specifically for this batch of ciphertext. This public key gets sent
+    // along with the ciphertext and can be used to derive the secret key to decrypt it.
+    let cipher_public_key = PublicKey::from(&ephemeral_secret);
 
     let shared_secret = ephemeral_secret.diffie_hellman(public_key);
     let hk = Hkdf::<Sha256>::new(None, shared_secret.as_bytes());
     let mut aes_key: [u8; 32] = [0; 32];
     hk.expand(b"aes-gcm key", &mut aes_key)
-        .map_err(|_| CryptoError::AsymmetricKey)?;
+        .map_err(|_| CryptoError::AsymmetricKeyError)?;
 
-    Ok(())
+    let nonce: [u8; 12] = rng.random_array().map_err(|_| CryptoError::RngError)?;
+
+    let (ciphertext, auth_tag) = aes_gcm_encrypt(plaintext.as_slice(), &aes_key, &nonce, &[])
+        .map_err(|_| CryptoError::AesGcmEncryptError)?;
+    Ok(HybridEncrypted {
+        ciphertext,
+        nonce,
+        cipher_public_key,
+        auth_tag,
+    })
+}
+
+/// Decrypts the contents of a file encrypted with assymetric cryptography. Uses the ciphertext
+/// public key generated from assymetric_encrypt() to derive a symmetric key to decrypt the
+/// ciphertext.
+pub fn assymetric_decrypt(
+    ciphertext: &Vec<u8, MAX_CONTENTS_SIZE>,
+    nonce: &[u8; 12],
+    cipher_public_key: &PublicKey,
+    auth_tag: &GcmTag,
+    private_key: &StaticSecret,
+) -> Result<Vec<u8, MAX_CONTENTS_SIZE>, CryptoError> {
+    let shared_secret = private_key.diffie_hellman(cipher_public_key);
+
+    let hk = Hkdf::<Sha256>::new(None, shared_secret.as_bytes());
+    let mut aes_key: [u8; 32] = [0; 32];
+    hk.expand(b"aes-gcm key", &mut aes_key)
+        .map_err(|_| CryptoError::AsymmetricKeyError)?;
+
+    let plaintext = aes_gcm_decrypt(ciphertext.as_slice(), &aes_key, nonce, auth_tag, &[])
+        .map_err(|_| CryptoError::AesGcmDecryptError)?;
+
+    Ok(plaintext)
 }
 
 pub fn ecc_sign_file_digest(digest: &[u8], private_key_bytes: &[u8; challenge_response_auth::PRIVATE_KEY_SIZE]) -> Result<Signature, challenge_response_auth::AuthError>{
