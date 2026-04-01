@@ -1,7 +1,9 @@
 //! Command dispatch and handlers for the eCTF host protocol.
 
+use crate::authentication::{PIN_LENGTH, SecurityStatus, verify_pin};
+use crate::filesystem::{self, Filesystem, Flash};
 use crate::host::{HostUart, MsgType};
-use crate::filesystem::{self, Flash, Filesystem};
+use crate::secrets::{PIN_HASH, PIN_SALT};
 
 /// Dispatch a received command to the appropriate handler.
 #[inline(never)]
@@ -30,9 +32,30 @@ pub fn handle_command(
 // ─── Command handler stubs ──────────────────────────────────────────
 
 #[inline(never)]
-fn cmd_list(host: &mut HostUart, pkt_len: u16, buf: &mut [u8], flash: &impl Flash, fs: &Filesystem) {
-    // TODO: Validate PIN
+fn cmd_list(
+    host: &mut HostUart,
+    pkt_len: u16,
+    buf: &mut [u8],
+    flash: &impl Flash,
+    fs: &Filesystem,
+) {
     host.print_debug("Checking PIN\n");
+    if buf.len() < PIN_LENGTH {
+        host.print_debug("Invalid pin length!");
+        return;
+    }
+    let pin = &buf[0..PIN_LENGTH];
+    match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
+        SecurityStatus::InvalidLength => {
+            host.print_debug("Invalid pin length. Pin must be 6 digits.");
+            return;
+        }
+        SecurityStatus::AuthFail => {
+            host.print_debug("Nice try! Invalid pin!");
+            return;
+        }
+        SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
+    };
 
     // Response format expected by host tools:
     //   nfiles (4 bytes u32 LE) + per-file entries (35 bytes each)
@@ -77,8 +100,7 @@ fn cmd_list(host: &mut HostUart, pkt_len: u16, buf: &mut [u8], flash: &impl Flas
         buf[entry_off] = slot;
         buf[entry_off + 1] = group_lo;
         buf[entry_off + 2] = group_hi;
-        buf[entry_off + 3..entry_off + 3 + filesystem::MAX_NAME_SIZE]
-            .copy_from_slice(&name);
+        buf[entry_off + 3..entry_off + 3 + filesystem::MAX_NAME_SIZE].copy_from_slice(&name);
 
         nfiles += 1;
     }
@@ -97,16 +119,34 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
     const UUID_OFF: usize = 7;
     const HEADER_SIZE: usize = 23;
 
-    // if (pkt_len as usize) < HEADER_SIZE {
-    //     host.print_error("Read packet too short");
-    //     return;
-    // }
-    host.print_debug("Read: Packet size check passed\n");
+    if (pkt_len as usize) < HEADER_SIZE {
+        host.print_error("Read packet too short");
+        return;
+    }
+
+    host.print_debug("Checking PIN\n");
+    if buf.len() < PIN_LENGTH {
+        host.print_debug("Invalid pin length!");
+        return;
+    }
+    let pin = &buf[0..PIN_LENGTH];
+    match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
+        SecurityStatus::InvalidLength => {
+            host.print_debug("Invalid pin length. Pin must be 6 digits.");
+            return;
+        }
+        SecurityStatus::AuthFail => {
+            host.print_debug("Nice try! Invalid pin!");
+            return;
+        }
+        SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
+    };
 
     let _pin = &buf[PIN_OFF..PIN_OFF + 6];
     let slot = buf[SLOT_OFF];
-    let uuid: &[u8; filesystem::UUID_SIZE] =
-        buf[UUID_OFF..UUID_OFF + filesystem::UUID_SIZE].try_into().unwrap();
+    let uuid: &[u8; filesystem::UUID_SIZE] = buf[UUID_OFF..UUID_OFF + filesystem::UUID_SIZE]
+        .try_into()
+        .unwrap();
     host.print_debug("Read: Parsed slot and UUID\n");
 
     // Get file metadata from FAT
@@ -151,10 +191,8 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
         host.print_error("Stored file metadata too short");
         return;
     }
-    let contents_len = u16::from_le_bytes([
-        file_buf[CONTENTS_LEN_OFF],
-        file_buf[CONTENTS_LEN_OFF + 1],
-    ]) as usize;
+    let contents_len =
+        u16::from_le_bytes([file_buf[CONTENTS_LEN_OFF], file_buf[CONTENTS_LEN_OFF + 1]]) as usize;
     host.print_debug("Read: Extracted contents length\n");
 
     if contents_len > filesystem::MAX_CONTENTS_SIZE
@@ -184,7 +222,13 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
 }
 
 #[inline(never)]
-fn cmd_write(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &mut impl Flash, fs: &mut Filesystem) {
+fn cmd_write(
+    host: &mut HostUart,
+    pkt_len: u16,
+    buf: &[u8],
+    flash: &mut impl Flash,
+    fs: &mut Filesystem,
+) {
     // Start SysTick timer immediately to capture total command time
     const SYST_RVR: *mut u32 = 0xE000_E014 as *mut u32;
     const SYST_CVR: *mut u32 = 0xE000_E018 as *mut u32;
@@ -208,17 +252,33 @@ fn cmd_write(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &mut impl Fla
         host.print_error("Write packet too short");
         return;
     }
+    host.print_debug("Checking PIN\n");
+    let pin = &buf[0..PIN_LENGTH];
+    match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
+        SecurityStatus::InvalidLength => {
+            host.print_debug("Invalid pin length. Pin must be 6 digits.");
+            return;
+        }
+        SecurityStatus::AuthFail => {
+            host.print_debug("Nice try! Invalid pin!");
+            return;
+        }
+        SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
+    };
 
     let _pin = &buf[PIN_OFF..PIN_OFF + 6];
     let slot = buf[SLOT_OFF];
     let group_id = u16::from_le_bytes([buf[GROUP_OFF], buf[GROUP_OFF + 1]]);
     let name_raw = &buf[NAME_OFF..NAME_OFF + filesystem::MAX_NAME_SIZE];
-    let name_len = name_raw.iter().position(|&b| b == 0).unwrap_or(name_raw.len());
+    let name_len = name_raw
+        .iter()
+        .position(|&b| b == 0)
+        .unwrap_or(name_raw.len());
     let name = &name_raw[..name_len];
-    let uuid: &[u8; filesystem::UUID_SIZE] =
-        buf[UUID_OFF..UUID_OFF + filesystem::UUID_SIZE].try_into().unwrap();
-    let contents_len =
-        u16::from_le_bytes([buf[CLEN_OFF], buf[CLEN_OFF + 1]]) as usize;
+    let uuid: &[u8; filesystem::UUID_SIZE] = buf[UUID_OFF..UUID_OFF + filesystem::UUID_SIZE]
+        .try_into()
+        .unwrap();
+    let contents_len = u16::from_le_bytes([buf[CLEN_OFF], buf[CLEN_OFF + 1]]) as usize;
 
     // Validate contents_len against actual packet payload
     if contents_len > filesystem::MAX_CONTENTS_SIZE
@@ -269,16 +329,38 @@ fn cmd_write(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &mut impl Fla
 }
 
 #[inline(never)]
-fn cmd_receive(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf: &mut [u8], flash: &mut impl Flash, fs: &mut Filesystem) {
+fn cmd_receive(
+    host: &mut HostUart,
+    uart1: &mut HostUart,
+    _pkt_len: u16,
+    buf: &mut [u8],
+    flash: &mut impl Flash,
+    fs: &mut Filesystem,
+) {
     // Parse receive_command_t: pin(6) + read_slot(1) + write_slot(1) = 8 bytes
+    if buf.len() < 8 {
+        host.print_debug("Invalid packet length!");
+        return;
+    }
     const READ_SLOT_OFF: usize = 6;
     const WRITE_SLOT_OFF: usize = 7;
 
-    let _pin = &buf[..6];
     let read_slot = buf[READ_SLOT_OFF];
     let write_slot = buf[WRITE_SLOT_OFF];
 
-    // TODO: PIN check
+    host.print_debug("Checking PIN\n");
+    let pin = &buf[0..PIN_LENGTH];
+    match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
+        SecurityStatus::InvalidLength => {
+            host.print_debug("Invalid pin length. Pin must be 6 digits.");
+            return;
+        }
+        SecurityStatus::AuthFail => {
+            host.print_debug("Nice try! Invalid pin!");
+            return;
+        }
+        SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
+    };
 
     // Build receive_request_t (41 bytes): slot(1) + group_permission_t[8] (5 bytes each)
     // global_permissions from secrets.h: {0x1234, r, !w, !recv}, {0x4321, r, w, recv}, rest zeroed
@@ -287,9 +369,9 @@ fn cmd_receive(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf: &m
     // permission[0]: group_id=0x1234, read=true, write=false, receive=false
     request_buf[1] = 0x34; // group_id LE low
     request_buf[2] = 0x12; // group_id LE high
-    request_buf[3] = 1;    // read
-    request_buf[4] = 0;    // write
-    request_buf[5] = 0;    // receive
+    request_buf[3] = 1; // read
+    request_buf[4] = 0; // write
+    request_buf[5] = 0; // receive
     // permission[1]: group_id=0x4321, read=true, write=true, receive=true
     request_buf[6] = 0x21;
     request_buf[7] = 0x43;
@@ -316,16 +398,14 @@ fn cmd_receive(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf: &m
     }
 
     // Parse response: uuid = buf[0..16], file_t = buf[16..]
-    let uuid: &[u8; filesystem::UUID_SIZE] =
-        buf[..filesystem::UUID_SIZE].try_into().unwrap();
+    let uuid: &[u8; filesystem::UUID_SIZE] = buf[..filesystem::UUID_SIZE].try_into().unwrap();
 
     // Reconstruct File from raw bytes at buf[16..]
     let file_off = filesystem::UUID_SIZE;
     let file_bytes = &buf[file_off..recv_len as usize];
 
-    let file: filesystem::File = unsafe {
-        core::ptr::read_unaligned(file_bytes.as_ptr() as *const filesystem::File)
-    };
+    let file: filesystem::File =
+        unsafe { core::ptr::read_unaligned(file_bytes.as_ptr() as *const filesystem::File) };
 
     // Write received file to local flash
     if let Err(_) = fs.write_file(write_slot, &file, uuid, flash) {
@@ -339,10 +419,19 @@ fn cmd_receive(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf: &m
 
 #[inline(never)]
 fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf: &mut [u8]) {
-    // Parse interrogate_command_t: pin(6) = 6 bytes
-    let _pin = &buf[..6];
-
-    // TODO: PIN check
+    host.print_debug("Checking PIN\n");
+    let pin = &buf[0..PIN_LENGTH];
+    match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
+        SecurityStatus::InvalidLength => {
+            host.print_debug("Invalid pin length. Pin must be 6 digits.");
+            return;
+        }
+        SecurityStatus::AuthFail => {
+            host.print_debug("Nice try! Invalid pin!");
+            return;
+        }
+        SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
+    };
 
     // Send empty interrogate request to neighbor
     let _ = uart1.write_packet(MsgType::Interrogate, &[]);
@@ -366,7 +455,14 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
 }
 
 #[inline(never)]
-fn cmd_listen(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf: &mut [u8], flash: &impl Flash, fs: &Filesystem) {
+fn cmd_listen(
+    host: &mut HostUart,
+    uart1: &mut HostUart,
+    _pkt_len: u16,
+    buf: &mut [u8],
+    flash: &impl Flash,
+    fs: &Filesystem,
+) {
     // Receive a packet from neighboring HSM via UART1
     let mut uart_buf = [0u8; 41]; // sizeof(receive_request_t): slot(1) + permissions(5*8)
     let max_len = uart_buf.len() as u16;
@@ -447,7 +543,10 @@ fn cmd_listen(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf: &mu
 
             // Read file_t from flash into buf after UUID
             let file_len = entry.length as usize;
-            flash.read(entry.flash_addr, &mut buf[filesystem::UUID_SIZE..filesystem::UUID_SIZE + file_len]);
+            flash.read(
+                entry.flash_addr,
+                &mut buf[filesystem::UUID_SIZE..filesystem::UUID_SIZE + file_len],
+            );
 
             let total_len = filesystem::UUID_SIZE + file_len;
             let _ = uart1.write_packet(MsgType::Receive, &buf[..total_len]);
