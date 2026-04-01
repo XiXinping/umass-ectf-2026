@@ -13,6 +13,7 @@ pub mod host;
 pub mod permission;
 pub mod random;
 pub mod secrets;
+pub mod secure_filesystem;
 
 #[cfg(test)]
 #[panic_handler]
