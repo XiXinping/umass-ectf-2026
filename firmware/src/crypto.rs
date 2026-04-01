@@ -3,6 +3,13 @@ use aes_gcm::{
     Aes256Gcm, Key, Nonce,
 };
 
+use crate::challenge_response_auth;
+use p256::ecdsa::SigningKey;
+
+use p256::ecdsa::{
+    Signature, VerifyingKey,
+    signature::{Signer, Verifier},
+};
 
 pub fn aes_gcm_encrypt(plaintext: &[u8],             
     key: &[u8; 32],               
@@ -56,4 +63,27 @@ pub fn aes_gcm_decrypt(ciphertext: &[u8],
     plaintext_out.copy_from_slice(&buffer[..ciphertext.len()]);
 
     Ok(())
+}
+
+pub fn ecc_sign_file_digest(digest: &[u8], private_key_bytes: &[u8; challenge_response_auth::PRIVATE_KEY_SIZE]) -> Result<Signature, challenge_response_auth::AuthError>{
+    let signing_key = SigningKey::from_slice(private_key_bytes)
+        .map_err(|_| challenge_response_auth::AuthError::KeyImportFailed)?;
+
+    let signature: Signature = signing_key.sign(digest);
+
+    Ok(signature)
+
+}
+
+pub fn ecc_verify_file_digest(
+    signature: &Signature,
+    digest: &[u8],
+    public_key_bytes: &[u8],
+) -> Result<(), challenge_response_auth::AuthError> {
+    let verifying_key = VerifyingKey::from_sec1_bytes(public_key_bytes)
+        .map_err(|_| challenge_response_auth::AuthError::KeyImportFailed)?;
+
+    verifying_key
+        .verify(digest, signature)
+        .map_err(|_| challenge_response_auth::AuthError::VerificationFailed)
 }
