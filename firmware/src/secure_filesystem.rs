@@ -129,6 +129,7 @@ impl Default for FatEntry {
 
 /// On-flash protected file structure
 #[repr(C)]
+#[derive(PartialEq, Debug)]
 pub struct ProtectedFile {
     // Metadata
     pub in_use: u32,
@@ -216,7 +217,7 @@ impl ProtectedFile {
 
     /// Create a cryptographic digest using HMAC with SHA-256 using a file's contents, group ID,
     /// UUID, and name.
-    fn digest(
+    pub fn digest(
         group_id: u16,
         uuid: Uuid,
         name: &[u8; MAX_NAME_SIZE],

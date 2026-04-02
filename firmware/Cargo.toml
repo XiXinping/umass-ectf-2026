@@ -26,6 +26,10 @@ harness = false
 name = "ecc_test"
 harness = false
 
+[[test]]
+name = "secure_filesystem_test"
+harness = false
+
 [[bin]]
 name = "ectf-2026"
 test = false
