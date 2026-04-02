@@ -11,7 +11,7 @@ use core::ptr;
 use defmt::info;
 use embassy_time::Instant;
 
-use crate::filesystem::FsError;
+use crate::secure_filesystem::{Flash, FsError};
 
 /// Flash page (sector) size in bytes.
 pub const FLASH_PAGE_SIZE: u32 = 1024;
@@ -316,7 +316,7 @@ pub fn flash_simple_write(address: u32, data: &[u8]) -> Result<(), FsError> {
 /// Implementation of the `filesystem::Flash` trait using real hardware.
 pub struct HwFlash;
 
-impl crate::filesystem::Flash for HwFlash {
+impl Flash for HwFlash {
     fn read(&self, address: u32, buf: &mut [u8]) {
         flash_simple_read(address, buf);
     }

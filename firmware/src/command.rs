@@ -1,12 +1,14 @@
 //! Command dispatch and handlers for the eCTF host protocol.
 
+use heapless::{Vec, format};
 use uuid::Uuid;
 
 use crate::authentication::{PIN_LENGTH, SecurityStatus, verify_pin};
 use crate::host::{HostUart, MsgType};
 use crate::secrets::{PIN_HASH, PIN_SALT};
 use crate::secure_filesystem::{
-    self, Filesystem, Flash, FsError, MAX_CONTENTS_SIZE, MAX_NAME_SIZE, ProtectedFile, UUID_SIZE,
+    self, FILE_IN_USE, FileError, Filesystem, Flash, FsError, MAX_CONTENTS_SIZE, MAX_FILE_COUNT,
+    MAX_NAME_SIZE, ProtectedFile, UUID_SIZE,
 };
 
 /// Dispatch a received command to the appropriate handler.
@@ -75,7 +77,7 @@ fn cmd_list(
     // Layout: [scratch 38 bytes for flash reads][response: nfiles(4) + entries...]
     let resp_off = FILE_HDR_SIZE; // start response after scratch area
 
-    for slot in 0..(secure_filesystem::MAX_FILE_COUNT as u8) {
+    for slot in 0..(MAX_FILE_COUNT as u8) {
         let entry = match fs.get_file_metadata(slot) {
             Ok(e) => e,
             Err(_) => continue,
@@ -148,74 +150,118 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
 
     let _pin = &buf[PIN_OFF..PIN_OFF + 6];
     let slot = buf[SLOT_OFF];
-    let uuid = Uuid::from_slice(&buf[UUID_OFF..UUID_OFF + secure_filesystem::UUID_SIZE]).unwrap();
+    let uuid = Uuid::from_slice(&buf[UUID_OFF..UUID_OFF + UUID_SIZE]).unwrap();
     host.print_debug("Read: Parsed slot and UUID\n");
 
-    // Get file metadata from FAT
-    let entry = match fs.get_file_metadata(slot) {
-        Ok(e) => e,
+    let file = match fs.read_file(slot, flash) {
+        Ok(f) => f,
+        Err(FsError::EmptySlot) => {
+            host.print_debug(&format!(20; "Slot {} is empty", slot).unwrap());
+            return;
+        }
+        Err(FsError::InvalidSlot) => {
+            host.print_debug(&format!(20; "Invalid slot: {}", slot).unwrap());
+            return;
+        }
         Err(_) => {
-            host.print_error("Invalid file slot");
+            host.print_debug("Something has gone wrong!");
             return;
         }
     };
-    host.print_debug("Read: Got FAT entry\n");
 
-    // Verify the entry is valid
-    if entry.is_empty() {
-        host.print_error("File slot empty");
+    // Check that the file UUID matches the requested UUID
+    if file.uuid != uuid {
+        host.print_debug("UUID does not match requested file UUID!");
         return;
     }
-    host.print_debug("Read: Entry is not empty\n");
 
-    // Verify UUID matches
-    if entry.uuid != uuid {
-        host.print_error("UUID mismatch");
-        return;
-    }
-    host.print_debug("Read: UUID verified\n");
+    // // Get file metadata from FAT
+    // let entry = match fs.get_file_metadata(slot) {
+    //     Ok(e) => e,
+    //     Err(_) => {
+    //         host.print_error("Invalid file slot");
+    //         return;
+    //     }
+    // };
+    // host.print_debug("Read: Got FAT entry\n");
+    //
+    // // Verify the entry is valid
+    // if entry.is_empty() {
+    //     host.print_error("File slot empty");
+    //     return;
+    // }
+    // host.print_debug("Read: Entry is not empty\n");
+    //
+    // // Verify UUID matches
+    // if entry.uuid != uuid {
+    //     host.print_error("UUID mismatch");
+    //     return;
+    // }
+    // host.print_debug("Read: UUID verified\n");
 
     // Allocate buffer and read file from flash
-    let mut file_buf = [0u8; MAX_CONTENTS_SIZE + 40]; // +40 for metadata
-    if entry.length as usize > file_buf.len() {
-        host.print_error("File too large");
-        return;
-    }
-
-    flash.read(entry.flash_addr, &mut file_buf[..entry.length as usize]);
-    host.print_debug("Read: File loaded from flash\n");
-
-    // Extract the contents from the file structure
-    // Layout: in_use(4) + group_id(2) + name(32) + contents_len(2) + contents(...)
-    const CONTENTS_LEN_OFF: usize = 4 + 2 + MAX_NAME_SIZE; // 38
-    const METADATA_SIZE: usize = CONTENTS_LEN_OFF + 2; // 40
-    if (entry.length as usize) < METADATA_SIZE {
-        host.print_error("Stored file metadata too short");
-        return;
-    }
-    let contents_len =
-        u16::from_le_bytes([file_buf[CONTENTS_LEN_OFF], file_buf[CONTENTS_LEN_OFF + 1]]) as usize;
-    host.print_debug("Read: Extracted contents length\n");
-
-    if contents_len > MAX_CONTENTS_SIZE || METADATA_SIZE + contents_len > entry.length as usize {
-        host.print_error("Invalid file contents length");
-        return;
-    }
-    host.print_debug("Read: Contents length validated\n");
-
-    // Send back payload in host-tools format: name(32) + contents
-    const NAME_OFF: usize = 4 + 2; // after in_use + group_id
-    let name = &file_buf[NAME_OFF..NAME_OFF + MAX_NAME_SIZE];
-    let contents = &file_buf[METADATA_SIZE..METADATA_SIZE + contents_len];
+    // let mut file_buf = [0u8; size_of::<ProtectedFile>()]; // +40 for metadata
+    // if entry.length as usize > file_buf.len() {
+    //     host.print_error("File too large");
+    //     return;
+    // }
+    //
+    // flash.read(entry.flash_addr, &mut file_buf[..entry.length as usize]);
+    // host.print_debug("Read: File loaded from flash\n");
+    //
+    // // Extract the contents from the file structure
+    // // Layout: in_use(4) + group_id(2) + name(32) + contents_len(2) + contents(...)
+    // const CONTENTS_LEN_OFF: usize = 4 + 2 + MAX_NAME_SIZE; // 38
+    // const METADATA_SIZE: usize = CONTENTS_LEN_OFF + 2; // 40
+    // if (entry.length as usize) < METADATA_SIZE {
+    //     host.print_error("Stored file metadata too short");
+    //     return;
+    // }
+    // let contents_len =
+    //     u16::from_le_bytes([file_buf[CONTENTS_LEN_OFF], file_buf[CONTENTS_LEN_OFF + 1]]) as usize;
+    // host.print_debug("Read: Extracted contents length\n");
+    //
+    // if contents_len > MAX_CONTENTS_SIZE || METADATA_SIZE + contents_len > entry.length as usize {
+    //     host.print_error("Invalid file contents length");
+    //     return;
+    // }
+    // host.print_debug("Read: Contents length validated\n");
+    //
+    // // Send back payload in host-tools format: name(32) + contents
+    // const NAME_OFF: usize = 4 + 2; // after in_use + group_id
+    // let name = &file_buf[NAME_OFF..NAME_OFF + MAX_NAME_SIZE];
+    // let contents = &file_buf[METADATA_SIZE..METADATA_SIZE + contents_len];
+    // let file = fs.read_file(flash);
+    let contents = match file.decrypt() {
+        Ok(contents) => contents,
+        Err(FileError::NoReadPermission) => {
+            host.print_debug(
+                &format!(
+                    64; "HSM does not have permission to write files from group: {:#x}",
+                    file.group_id
+                )
+                .unwrap(),
+            );
+            return;
+        }
+        Err(FileError::DecryptError) => {
+            host.print_debug("Error while decrypting file!");
+            return;
+        }
+        Err(_) => {
+            host.print_debug("Something went wrong!");
+            return;
+        }
+    };
     host.print_debug("Read: Contents (hex):");
-    host.print_hex_debug(contents);
+    host.print_hex_debug(&contents);
     host.print_debug("Read: Contents debug sent\n");
 
     let mut resp = [0u8; MAX_NAME_SIZE + MAX_CONTENTS_SIZE];
-    resp[..MAX_NAME_SIZE].copy_from_slice(name);
-    resp[MAX_NAME_SIZE..MAX_NAME_SIZE + contents_len].copy_from_slice(contents);
+    resp[..MAX_NAME_SIZE].copy_from_slice(&file.name);
+    resp[MAX_NAME_SIZE..MAX_NAME_SIZE + contents.len()].copy_from_slice(&contents);
 
-    let resp_len = MAX_NAME_SIZE + contents_len;
+    let resp_len = MAX_NAME_SIZE + contents.len();
     let _ = host.write_packet(MsgType::Read, &resp[..resp_len]);
     host.print_debug("Read: Sent file contents response\n");
 }
@@ -273,8 +319,8 @@ fn cmd_write(
         .iter()
         .position(|&b| b == 0)
         .unwrap_or(name_raw.len());
-    let name = &name_raw[..name_len];
-    let uuid: &[u8; UUID_SIZE] = buf[UUID_OFF..UUID_OFF + UUID_SIZE].try_into().unwrap();
+    let name = &name_raw[..name_len].as_array().unwrap();
+    let uuid: Uuid = Uuid::from_slice(&buf[UUID_OFF..UUID_OFF + UUID_SIZE]).unwrap();
     let contents_len = u16::from_le_bytes([buf[CLEN_OFF], buf[CLEN_OFF + 1]]) as usize;
 
     // Validate contents_len against actual packet payload
@@ -283,20 +329,27 @@ fn cmd_write(
         return;
     }
 
-    let contents = &buf[CONTENTS_OFF..CONTENTS_OFF + contents_len];
+    let contents: Vec<u8, MAX_CONTENTS_SIZE> =
+        Vec::from_slice(&buf[CONTENTS_OFF..CONTENTS_OFF + contents_len]).unwrap();
 
-    let file = match ProtectedFile::create(group_id, uuid, name, contents) {
+    let file = match ProtectedFile::create(group_id, uuid, name, &contents) {
         Ok(f) => f,
-        Err(FsError::NameTooLong) => {
-            host.print_error("Create file failed: name too long");
+        Err(FileError::NoWritePermission) => {
+            host.print_error(
+                &format!(
+                    64; "HSM does not have permission to write files from group: {:#x}",
+                    group_id
+                )
+                .unwrap(),
+            );
             return;
         }
-        Err(FsError::ContentsTooLarge) => {
-            host.print_error("Create file failed: contents too large");
+        Err(FileError::BullshitError) => {
+            host.print_error("Something stupid went wrong.");
             return;
         }
         Err(_) => {
-            host.print_error("Create file failed: unknown error");
+            host.print_error("Something really bad happened.");
             return;
         }
     };
@@ -386,6 +439,8 @@ fn cmd_receive(
             return;
         }
     };
+
+    // Parse challenge, send response
 
     if cmd != MsgType::Receive {
         host.print_error("Receive: opcode mismatch");
@@ -482,7 +537,7 @@ fn cmd_listen(
             let mut nfiles: u32 = 0;
             let resp_off = FILE_HDR_SIZE; // scratch area for flash reads
 
-            for slot in 0..(filesystem::MAX_FILE_COUNT as u8) {
+            for slot in 0..(MAX_FILE_COUNT as u8) {
                 let entry = match fs.get_file_metadata(slot) {
                     Ok(e) => e,
                     Err(_) => continue,
@@ -494,7 +549,7 @@ fn cmd_listen(
                 flash.read(entry.flash_addr, &mut buf[..FILE_HDR_SIZE]);
 
                 let in_use = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-                if in_use != filesystem::FILE_IN_USE {
+                if in_use != FILE_IN_USE {
                     continue;
                 }
 
@@ -535,16 +590,13 @@ fn cmd_listen(
 
             // Build receive_response_t in buf: uuid(16) + file_t(8232)
             // Copy UUID from FAT entry
-            buf[..filesystem::UUID_SIZE].copy_from_slice(&entry.uuid);
+            buf[..UUID_SIZE].copy_from_slice(&entry.uuid.to_bytes_le());
 
             // Read file_t from flash into buf after UUID
             let file_len = entry.length as usize;
-            flash.read(
-                entry.flash_addr,
-                &mut buf[filesystem::UUID_SIZE..filesystem::UUID_SIZE + file_len],
-            );
+            flash.read(entry.flash_addr, &mut buf[UUID_SIZE..UUID_SIZE + file_len]);
 
-            let total_len = filesystem::UUID_SIZE + file_len;
+            let total_len = UUID_SIZE + file_len;
             let _ = uart1.write_packet(MsgType::Receive, &buf[..total_len]);
         }
         _ => {

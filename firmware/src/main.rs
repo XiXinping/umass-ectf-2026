@@ -4,11 +4,11 @@
 use defmt::*;
 use ectf_2026::authentication::verify_pin;
 use ectf_2026::command;
-use ectf_2026::filesystem::Filesystem;
 use ectf_2026::flash::HwFlash;
 use ectf_2026::host::HostUart;
 use ectf_2026::secrets::PIN_HASH;
 use ectf_2026::secrets::PIN_SALT;
+use ectf_2026::secure_filesystem::Filesystem;
 use embassy_mspm0::uart::{Config, Uart};
 
 // use defmt_rtt as _;

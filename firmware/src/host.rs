@@ -24,6 +24,8 @@ pub enum MsgType {
     Ack = b'A',
     Debug = b'D',
     Error = b'E',
+    Challenge = b'Q',
+    Response = b'P',
 }
 
 impl MsgType {
@@ -38,6 +40,8 @@ impl MsgType {
             b'A' => Some(Self::Ack),
             b'D' => Some(Self::Debug),
             b'E' => Some(Self::Error),
+            b'Q' => Some(Self::Challenge),
+            b'P' => Some(Self::Response),
             _ => None,
         }
     }

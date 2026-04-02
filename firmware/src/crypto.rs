@@ -144,6 +144,7 @@ pub fn asymmetric_decrypt(
     Ok(plaintext)
 }
 
+/// Sign a file digest using ECDSA.
 pub fn ecc_sign_file_digest(
     digest: &[u8],
     private_key_bytes: &[u8; PRIVATE_KEY_SIZE],
@@ -156,6 +157,7 @@ pub fn ecc_sign_file_digest(
     Ok(signature)
 }
 
+/// Use a public key to verify that a file was signed using ECDSA with the corresponding private key.
 pub fn ecc_verify_file_digest(
     signature: &Signature,
     digest: &[u8],

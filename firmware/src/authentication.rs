@@ -13,19 +13,6 @@ pub enum SecurityStatus {
     InvalidLength,
     AuthFail,
 }
-/*
-pub fn pin_is_lower_hex(pin: &[u8]) -> bool {
-    if pin.len() != PIN_LENGTH {
-        return false;
-    }
-
-    pin.iter().all(|&c| {
-        let is_digit = c >= b'0' && c <= b'9';
-        let is_lower_hex_alpha = c >= b'a' && c <= b'f';
-        is_digit || is_lower_hex_alpha
-    })
-}
-*/
 
 pub fn verify_pin(pin: &[u8], pin_salt: &[u8], expected_hash: &[u8]) -> SecurityStatus {
     if pin.len() != PIN_LENGTH || pin_salt.len() != PIN_SALT_SIZE {
@@ -34,9 +21,6 @@ pub fn verify_pin(pin: &[u8], pin_salt: &[u8], expected_hash: &[u8]) -> Security
 
     let mut derived = [0u8; PIN_HASH_SIZE];
 
-    // if pbkdf2::<Hmac<Sha256>>(pin, pin_salt, 1_234_567, &mut derived).is_err() {
-    //     return SecurityStatus::AuthFail;
-    // }
     if pbkdf2::<Hmac<Sha256>>(pin, pin_salt, 5, &mut derived).is_err() {
         return SecurityStatus::AuthFail;
     }

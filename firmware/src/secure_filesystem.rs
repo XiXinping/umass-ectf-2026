@@ -5,15 +5,19 @@ use core::{mem, ptr};
 use defmt::info;
 use embassy_time::Instant;
 use heapless::Vec;
+use hmac::{Hmac, Mac};
 use p256::ecdsa::Signature;
+use sha2::Sha256;
 use uuid::Uuid;
 use x25519_dalek::{PublicKey, StaticSecret};
 
 use aes_gcm::Tag as GcmTag;
 
 use crate::{
-    crypto::{asymmetric_decrypt, asymmetric_encrypt, ecc_sign_file_digest},
-    permission::{self, PermissionType},
+    crypto::{
+        asymmetric_decrypt, asymmetric_encrypt, ecc_sign_file_digest, ecc_verify_file_digest,
+    },
+    permission::{self, PermissionType, get_public_key},
 };
 
 // ─── Constants (must match C functional spec) ───────────────────────
@@ -48,6 +52,8 @@ pub const FILE_IN_USE: u32 = 0xDEAD_BEEF;
 pub enum FsError {
     /// Slot index is out of range (must be 0..MAX_FILE_COUNT).
     InvalidSlot,
+    /// Slot contains no file. Only occurs when trying to read from an empty slot.
+    EmptySlot,
     /// File name exceeds MAX_NAME_SIZE - 1 bytes (must leave room for NUL).
     NameTooLong,
     /// File contents exceed MAX_CONTENTS_SIZE bytes.
@@ -56,10 +62,12 @@ pub enum FsError {
     InvalidFatEntry,
     /// Flash write failed.
     FlashWriteError,
+    /// Invalid signature
+    InvalidSignature,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProtectedFileError {
+pub enum FileError {
     /// HSM does not have valid read permission for a protected file's group.
     NoReadPermission,
     /// HSM does not have valid write permission for a protected file's group.
@@ -68,6 +76,8 @@ pub enum ProtectedFileError {
     DecryptError,
     /// Invalid group ID.
     InvalidGroupId,
+    /// Invalid file signature
+    InvalidSignature,
     /// Error while encrypting file contents.
     EncryptError,
     /// Error while generating file signature.
@@ -135,10 +145,26 @@ pub struct ProtectedFile {
 
 // TO-DO: Add signature check
 impl ProtectedFile {
+    pub fn verify_signature(&self) -> Result<(), FileError> {
+        // Get the write public key for the group ID
+        let write_public_key_bytes = get_public_key(self.group_id, PermissionType::Write)
+            .ok_or(FileError::InvalidGroupId)?;
+
+        // The digest should contain the encrypted contents, group ID, UUID, and filename
+        let mut mac = Hmac::<Sha256>::new_from_slice(self.contents.as_slice()).unwrap();
+        mac.update(&self.name);
+        mac.update(&self.group_id.to_le_bytes());
+        mac.update(self.uuid.as_bytes());
+
+        let digest = mac.finalize().into_bytes();
+
+        ecc_verify_file_digest(&self.signature, &digest, &write_public_key_bytes)
+            .map_err(|_| FileError::InvalidSignature)
+    }
     /// Attempt to return the decrypted contents of the file.
-    pub fn decrypt(&self) -> Result<Vec<u8, MAX_CONTENTS_SIZE>, ProtectedFileError> {
+    pub fn decrypt(&self) -> Result<Vec<u8, MAX_CONTENTS_SIZE>, FileError> {
         let read_key_bytes = permission::get_private_key(self.group_id, PermissionType::Read)
-            .ok_or(ProtectedFileError::NoReadPermission)?;
+            .ok_or(FileError::NoReadPermission)?;
 
         asymmetric_decrypt(
             &self.contents,
@@ -147,7 +173,7 @@ impl ProtectedFile {
             &self.auth_tag,
             &StaticSecret::from(read_key_bytes),
         )
-        .map_err(|_| ProtectedFileError::DecryptError)
+        .map_err(|_| FileError::DecryptError)
     }
 
     // Create a new protected file from plaintext contents
@@ -156,46 +182,24 @@ impl ProtectedFile {
         uuid: Uuid,
         name: &[u8; MAX_NAME_SIZE],
         contents: &Vec<u8, MAX_CONTENTS_SIZE>,
-    ) -> Result<Self, ProtectedFileError> {
+    ) -> Result<Self, FileError> {
         let write_key_bytes = permission::get_private_key(group_id, PermissionType::Write)
-            .ok_or(ProtectedFileError::NoWritePermission)?;
+            .ok_or(FileError::NoWritePermission)?;
 
         // The read public key corresponding to the group ID of the file.
         let group_read_public_key = permission::get_public_key(group_id, PermissionType::Read)
-            .ok_or(ProtectedFileError::InvalidGroupId)?;
+            .ok_or(FileError::InvalidGroupId)?;
 
         // Encrypt the contents of the file
         let encrypted = asymmetric_encrypt(contents, &PublicKey::from(group_read_public_key))
-            .map_err(|_| ProtectedFileError::EncryptError)?;
+            .map_err(|_| FileError::EncryptError)?;
 
-        // The digest should contain the encrypted contents along with the group ID and the filename
-        let mut digest: Vec<u8, { MAX_CONTENTS_SIZE + MAX_NAME_SIZE + 16 + 2 }> =
-            Vec::from_slice(encrypted.ciphertext.as_slice())
-                .map_err(|_| ProtectedFileError::BullshitError)?;
-        // Add the name to the digest
-        digest
-            .extend_from_slice(name)
-            .map_err(|_| ProtectedFileError::BullshitError)?;
-        // Add the group ID
-        digest
-            .push((group_id & 0xFF) as u8)
-            .map_err(|_| ProtectedFileError::BullshitError)?;
-        digest
-            .push((group_id >> 8) as u8)
-            .map_err(|_| ProtectedFileError::BullshitError)?;
-        // Add the UUID
-        digest
-            .extend_from_slice(uuid.as_bytes())
-            .map_err(|_| ProtectedFileError::BullshitError)?;
-
+        let digest = Self::digest(group_id, uuid, name, &encrypted.ciphertext);
         let signature = ecc_sign_file_digest(&digest, &write_key_bytes)
-            .map_err(|_| ProtectedFileError::GenSignatureError)?;
-
-        // We can throw out the rest of the stuff we added for the digest
-        digest.truncate(MAX_CONTENTS_SIZE);
+            .map_err(|_| FileError::GenSignatureError)?;
 
         let ciphertext =
-            Vec::from_slice(digest.as_slice()).map_err(|_| ProtectedFileError::BullshitError)?;
+            Vec::from_slice(digest.as_slice()).map_err(|_| FileError::BullshitError)?;
 
         Ok(ProtectedFile {
             in_use: 0,
@@ -208,6 +212,23 @@ impl ProtectedFile {
             ciphertext_public_key: encrypted.cipher_public_key,
             contents: ciphertext,
         })
+    }
+
+    /// Create a cryptographic digest using HMAC with SHA-256 using a file's contents, group ID,
+    /// UUID, and name.
+    fn digest(
+        group_id: u16,
+        uuid: Uuid,
+        name: &[u8; MAX_NAME_SIZE],
+        contents: &Vec<u8, MAX_CONTENTS_SIZE>,
+    ) -> [u8; 32] {
+        // The digest should contain the encrypted contents, group ID, UUID, and filename
+        let mut mac = Hmac::<Sha256>::new_from_slice(contents.as_slice()).unwrap();
+        mac.update(name);
+        mac.update(&group_id.to_le_bytes());
+        mac.update(uuid.as_bytes());
+
+        mac.finalize().into_bytes().into()
     }
 }
 
@@ -381,7 +402,10 @@ impl Filesystem {
             // read_unaligned to avoid alignment UB if alignment isn't guaranteed
             ptr::read_unaligned(p)
         };
-        Ok(file)
+        match file.verify_signature() {
+            Ok(()) => Ok(file),
+            Err(_) => Err(FsError::InvalidSignature),
+        }
     }
 
     /// Get read-only access to a FAT entry's metadata.
