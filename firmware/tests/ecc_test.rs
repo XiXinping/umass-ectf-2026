@@ -71,4 +71,239 @@ use ectf_2026::filesystem::MAX_CONTENTS_SIZE;
 
      }
 
+     fn test_ecc_auth_tag_fail() {
+         let mut rng = SecureRng::new().expect("Failed to create RNG");
+
+         let priv_key = StaticSecret::random_from_rng(&mut rng);
+
+         let pub_key = PublicKey::from(&priv_key);
+         
+         let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
+             history as the greatest demonstration for freedom in the history of our nation. \
+             Five score years ago, a great American, in whose symbolic shadow we stand today, \
+             signed the Emancipation Proclamation";
+         let plaintext: &[u8] = i_have_a_dream.as_bytes();
+
+         let mut plaintext_vec = heapless::Vec::<u8, MAX_CONTENTS_SIZE>::new();
+
+         plaintext_vec.extend_from_slice(plaintext)
+            .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
+
+         let encrypted: crypto::HybridEncrypted = crypto::assymetric_encrypt(&plaintext_vec, &pub_key)
+                .expect("Encryption failed");
+
+         let mut auth_tag_bytes = [0u8; 16];
+
+         for i in 0..16 {
+            auth_tag_bytes[i] = i as u8;
+        }
+        
+        let decrypted = crypto::assymetric_decrypt(&encrypted.ciphertext, &nonce_bytes, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
+         
+        assert!(
+            matches!(result, Err(crypto::CryptoError::AesGcmDecryptError)),
+            "Expected AesGcmDecryptError, but got {:?}", result
+        );
+
+
+     }
+
+     fn test_ecc_priv_key_fail() {
+         let mut rng = SecureRng::new().expect("Failed to create RNG");
+
+         let priv_key = StaticSecret::random_from_rng(&mut rng);
+
+         let pub_key = PublicKey::from(&priv_key);
+         
+         let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
+             history as the greatest demonstration for freedom in the history of our nation. \
+             Five score years ago, a great American, in whose symbolic shadow we stand today, \
+             signed the Emancipation Proclamation";
+         let plaintext: &[u8] = i_have_a_dream.as_bytes();
+
+         let mut plaintext_vec = heapless::Vec::<u8, MAX_CONTENTS_SIZE>::new();
+
+         plaintext_vec.extend_from_slice(plaintext)
+            .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
+
+         let encrypted: crypto::HybridEncrypted = crypto::assymetric_encrypt(&plaintext_vec, &pub_key)
+                .expect("Encryption failed");
+
+         let mut auth_tag_bytes = [0u8; 16];
+
+         for i in 0..16 {
+            auth_tag_bytes[i] = i as u8;
+        }
+
+        let fail_priv_key: StaticSecret = StaticSecret::random_from_rng(&mut rng);
+        
+        let decrypted = crypto::assymetric_decrypt(&encrypted.ciphertext, &nonce_bytes, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
+         
+        assert!(
+            matches!(result, Err(crypto::CryptoError::AesGcmDecryptError)),
+            "Expected AesGcmDecryptError, but got {:?}", result
+        );
+
+
+     }
+
+    fn test_ecc_pub_key_fail() {
+         let mut rng = SecureRng::new().expect("Failed to create RNG");
+
+         let priv_key = StaticSecret::random_from_rng(&mut rng);
+
+         let pub_key = PublicKey::from(&priv_key);
+         
+         let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
+             history as the greatest demonstration for freedom in the history of our nation. \
+             Five score years ago, a great American, in whose symbolic shadow we stand today, \
+             signed the Emancipation Proclamation";
+         let plaintext: &[u8] = i_have_a_dream.as_bytes();
+
+         let mut plaintext_vec = heapless::Vec::<u8, MAX_CONTENTS_SIZE>::new();
+
+         plaintext_vec.extend_from_slice(plaintext)
+            .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
+
+         let encrypted: crypto::HybridEncrypted = crypto::assymetric_encrypt(&plaintext_vec, &pub_key)
+                .expect("Encryption failed");
+
+         let mut auth_tag_bytes = [0u8; 16];
+
+         for i in 0..16 {
+            auth_tag_bytes[i] = i as u8;
+        }
+
+        let fail_priv_key: StaticSecret = StaticSecret::random_from_rng(&mut rng);
+
+        let fail_pub_key = PublicKey::from(&priv_key);
+        
+        let decrypted = crypto::assymetric_decrypt(&encrypted.ciphertext, &nonce_bytes, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
+         
+        assert!(
+            matches!(result, Err(crypto::CryptoError::AesGcmDecryptError)),
+            "Expected AesGcmDecryptError, but got {:?}", result
+        );
+
+
+     }
+
+    fn test_ecc_both_key_fail() {
+         let mut rng = SecureRng::new().expect("Failed to create RNG");
+
+         let priv_key = StaticSecret::random_from_rng(&mut rng);
+
+         let pub_key = PublicKey::from(&priv_key);
+         
+         let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
+             history as the greatest demonstration for freedom in the history of our nation. \
+             Five score years ago, a great American, in whose symbolic shadow we stand today, \
+             signed the Emancipation Proclamation";
+         let plaintext: &[u8] = i_have_a_dream.as_bytes();
+
+         let mut plaintext_vec = heapless::Vec::<u8, MAX_CONTENTS_SIZE>::new();
+
+         plaintext_vec.extend_from_slice(plaintext)
+            .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
+
+         let encrypted: crypto::HybridEncrypted = crypto::assymetric_encrypt(&plaintext_vec, &pub_key)
+                .expect("Encryption failed");
+
+         let mut auth_tag_bytes = [0u8; 16];
+
+         for i in 0..16 {
+            auth_tag_bytes[i] = i as u8;
+        }
+
+        let fail_priv_key: StaticSecret = StaticSecret::random_from_rng(&mut rng);
+
+        let fail_pub_key = PublicKey::from(&priv_key);
+        
+        let decrypted = crypto::assymetric_decrypt(&encrypted.ciphertext, &nonce_bytes, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
+         
+        assert!(
+            matches!(result, Err(crypto::CryptoError::AesGcmDecryptError)),
+            "Expected AesGcmDecryptError, but got {:?}", result
+        );
+
+
+     }
+
+    fn test_ecc_nonce_fail() {
+         let mut rng = SecureRng::new().expect("Failed to create RNG");
+
+         let priv_key = StaticSecret::random_from_rng(&mut rng);
+
+         let pub_key = PublicKey::from(&priv_key);
+         
+         let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
+             history as the greatest demonstration for freedom in the history of our nation. \
+             Five score years ago, a great American, in whose symbolic shadow we stand today, \
+             signed the Emancipation Proclamation";
+         let plaintext: &[u8] = i_have_a_dream.as_bytes();
+
+         let mut plaintext_vec = heapless::Vec::<u8, MAX_CONTENTS_SIZE>::new();
+
+         plaintext_vec.extend_from_slice(plaintext)
+            .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
+
+         let encrypted: crypto::HybridEncrypted = crypto::assymetric_encrypt(&plaintext_vec, &pub_key)
+                .expect("Encryption failed");
+
+         let mut nonce_bytes = [0u8; 16];
+
+         for i in 0..16 {
+            nonce_bytes[i] = i as u8;
+        }
+        
+         let decrypted = crypto::assymetric_decrypt(&encrypted.ciphertext, &nonce_bytes, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
+         
+        assert!(
+            matches!(result, Err(crypto::CryptoError::AesGcmDecryptError)),
+            "Expected AesGcmDecryptError, but got {:?}", result
+        );
+
+     }
+
+    fn ecc_test_fail_ciphertext() {
+         let mut rng = SecureRng::new().expect("Failed to create RNG");
+
+         let priv_key = StaticSecret::random_from_rng(&mut rng);
+
+         let pub_key = PublicKey::from(&priv_key);
+         
+         let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
+             history as the greatest demonstration for freedom in the history of our nation. \
+             Five score years ago, a great American, in whose symbolic shadow we stand today, \
+             signed the Emancipation Proclamation";
+         let plaintext: &[u8] = i_have_a_dream.as_bytes();
+
+         let mut plaintext_vec = heapless::Vec::<u8, MAX_CONTENTS_SIZE>::new();
+
+         plaintext_vec.extend_from_slice(plaintext)
+            .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
+
+         let encrypted: crypto::HybridEncrypted = crypto::assymetric_encrypt(&plaintext_vec, &pub_key)
+                .expect("Encryption failed");
+
+         let mut nonce_bytes = [0u8; 16];
+
+         for i in 0..16 {
+            nonce_bytes[i] = i as u8;
+        }
+        
+        let decrypted = crypto::assymetric_decrypt(&plaintext, &nonce_bytes, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
+         
+        assert!(
+            matches!(result, Err(crypto::CryptoError::AesGcmDecryptError)),
+            "Expected AesGcmDecryptError, but got {:?}", result
+        );
+
+     }
+
+
+
+
+
+
  }
