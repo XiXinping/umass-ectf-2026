@@ -1,9 +1,20 @@
 // Secure Filesystem Implementation
 // provides a secure interface for file operations
 
-use core::{char::MAX, mem};
+use core::{mem, ptr};
 use defmt::info;
 use embassy_time::Instant;
+use heapless::Vec;
+use p256::ecdsa::Signature;
+use uuid::Uuid;
+use x25519_dalek::{PublicKey, StaticSecret};
+
+use aes_gcm::Tag as GcmTag;
+
+use crate::{
+    crypto::{asymmetric_decrypt, asymmetric_encrypt, ecc_sign_file_digest},
+    permission::{self, PermissionType},
+};
 
 // ─── Constants (must match C functional spec) ───────────────────────
 pub const MAX_FILE_COUNT: usize = 8;
@@ -47,6 +58,24 @@ pub enum FsError {
     FlashWriteError,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProtectedFileError {
+    /// HSM does not have valid read permission for a protected file's group.
+    NoReadPermission,
+    /// HSM does not have valid write permission for a protected file's group.
+    NoWritePermission,
+    /// Error while decrypting encrypted contents.
+    DecryptError,
+    /// Invalid group ID.
+    InvalidGroupId,
+    /// Error while encrypting file contents.
+    EncryptError,
+    /// Error while generating file signature.
+    GenSignatureError,
+    /// Something that really shouldn't have failed ended up failing.
+    BullshitError,
+}
+
 // ─── Flash abstraction trait ────────────────────────────────────────
 
 /// Thin abstraction over raw flash so the filesystem can be tested
@@ -63,7 +92,7 @@ pub trait Flash {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct FatEntry {
-    pub uuid: [u8; UUID_SIZE],
+    pub uuid: Uuid,
     pub length: u16,
     pub padding: u16,
     pub flash_addr: u32,
@@ -80,7 +109,7 @@ impl FatEntry {
 impl Default for FatEntry {
     fn default() -> Self {
         Self {
-            uuid: [0u8; UUID_SIZE],
+            uuid: Uuid::nil(),
             length: 0,
             padding: 0,
             flash_addr: 0,
@@ -90,34 +119,95 @@ impl Default for FatEntry {
 
 /// On-flash protected file structure
 #[repr(C)]
-#[derive(Clone)]
 pub struct ProtectedFile {
-    // metadata
+    // Metadata
     pub in_use: u32,
     pub group_id: u16,
     pub name: [u8; MAX_NAME_SIZE],
+    pub uuid: Uuid,
     pub nonce: [u8; NONCE_SIZE],
-    pub auth_tag: [u8; AUTH_TAG_SIZE],
-    pub signature: [u8; SIGNATURE_SIZE],
-    pub contents_length: u16, // length of encrypted contents
-    // actual contents (encrypted)
-    pub contents: [u8; MAX_CONTENTS_SIZE],
-    
+    pub auth_tag: GcmTag,
+    pub signature: Signature,
+    pub ciphertext_public_key: PublicKey,
+    /// The encrypted contents of the file.
+    pub contents: Vec<u8, MAX_CONTENTS_SIZE>,
 }
 
-impl Default for ProtectedFile {
-    fn default() -> Self {
-        Self {
-            in_use: 0,
-            group_id: 0,
-            name: [0u8; MAX_NAME_SIZE],
-            nonce: [0u8; NONCE_SIZE],
-            auth_tag: [0u8; AUTH_TAG_SIZE],
-            signature: [0u8; SIGNATURE_SIZE],
-            contents_length: 0,
-            contents: [0u8; MAX_CONTENTS_SIZE],
+// TO-DO: Add signature check
+impl ProtectedFile {
+    /// Attempt to return the decrypted contents of the file.
+    pub fn decrypt(&self) -> Result<Vec<u8, MAX_CONTENTS_SIZE>, ProtectedFileError> {
+        let read_key_bytes = permission::get_private_key(self.group_id, PermissionType::Read)
+            .ok_or(ProtectedFileError::NoReadPermission)?;
 
-        }
+        asymmetric_decrypt(
+            &self.contents,
+            &self.nonce,
+            &self.ciphertext_public_key,
+            &self.auth_tag,
+            &StaticSecret::from(read_key_bytes),
+        )
+        .map_err(|_| ProtectedFileError::DecryptError)
+    }
+
+    // Create a new protected file from plaintext contents
+    pub fn create(
+        group_id: u16,
+        uuid: Uuid,
+        name: &[u8; MAX_NAME_SIZE],
+        contents: &Vec<u8, MAX_CONTENTS_SIZE>,
+    ) -> Result<Self, ProtectedFileError> {
+        let write_key_bytes = permission::get_private_key(group_id, PermissionType::Write)
+            .ok_or(ProtectedFileError::NoWritePermission)?;
+
+        // The read public key corresponding to the group ID of the file.
+        let group_read_public_key = permission::get_public_key(group_id, PermissionType::Read)
+            .ok_or(ProtectedFileError::InvalidGroupId)?;
+
+        // Encrypt the contents of the file
+        let encrypted = asymmetric_encrypt(contents, &PublicKey::from(group_read_public_key))
+            .map_err(|_| ProtectedFileError::EncryptError)?;
+
+        // The digest should contain the encrypted contents along with the group ID and the filename
+        let mut digest: Vec<u8, { MAX_CONTENTS_SIZE + MAX_NAME_SIZE + 16 + 2 }> =
+            Vec::from_slice(encrypted.ciphertext.as_slice())
+                .map_err(|_| ProtectedFileError::BullshitError)?;
+        // Add the name to the digest
+        digest
+            .extend_from_slice(name)
+            .map_err(|_| ProtectedFileError::BullshitError)?;
+        // Add the group ID
+        digest
+            .push((group_id & 0xFF) as u8)
+            .map_err(|_| ProtectedFileError::BullshitError)?;
+        digest
+            .push((group_id >> 8) as u8)
+            .map_err(|_| ProtectedFileError::BullshitError)?;
+        // Add the UUID
+        digest
+            .extend_from_slice(uuid.as_bytes())
+            .map_err(|_| ProtectedFileError::BullshitError)?;
+
+        let signature = ecc_sign_file_digest(&digest, &write_key_bytes)
+            .map_err(|_| ProtectedFileError::GenSignatureError)?;
+
+        // We can throw out the rest of the stuff we added for the digest
+        digest.truncate(MAX_CONTENTS_SIZE);
+
+        let ciphertext =
+            Vec::from_slice(digest.as_slice()).map_err(|_| ProtectedFileError::BullshitError)?;
+
+        Ok(ProtectedFile {
+            in_use: 0,
+            group_id,
+            uuid,
+            name: *name,
+            nonce: encrypted.nonce,
+            auth_tag: encrypted.auth_tag,
+            signature,
+            ciphertext_public_key: encrypted.cipher_public_key,
+            contents: ciphertext,
+        })
     }
 }
 
@@ -160,10 +250,7 @@ impl Filesystem {
     fn store_fat(&self, flash: &mut impl Flash) -> Result<(), FsError> {
         flash.erase_page(FLASH_FAT_START)?;
         let buf = unsafe {
-            core::slice::from_raw_parts(
-                self.fat.as_ptr() as *const u8,
-                mem::size_of_val(&self.fat),
-            )
+            core::slice::from_raw_parts(self.fat.as_ptr() as *const u8, mem::size_of_val(&self.fat))
         };
         flash.write(FLASH_FAT_START, buf)
     }
@@ -182,105 +269,8 @@ impl Filesystem {
 
     /// Check whether a file slot is occupied.
     pub fn is_slot_in_use(&self, slot: u8, flash: &impl Flash) -> Result<bool, FsError> {
-        let mut file = ProtectedFile::default();
-        self.read_file(slot, &mut file, flash)?;
+        let file = self.read_file(slot, flash)?;
         Ok(file.in_use == FILE_IN_USE)
-    }
-
-    /// Create a new `File` in memory with validated inputs.
-    ///
-    /// This is the safe replacement for the C `create_file` which had
-    /// unbounded `strcpy` and `memcpy`.
-    pub fn create_file(
-        group_id: u16,
-        name: &[u8],
-        contents: &[u8],
-    ) -> Result<ProtectedFile, FsError> {
-        Self::create_file_inner(group_id, name, contents, None)
-    }
-
-    /// Create a new `File` in memory with boot-relative sub-step logging.
-    pub fn create_file_timed(
-        group_id: u16,
-        name: &[u8],
-        contents: &[u8],
-        boot: Instant,
-    ) -> Result<ProtectedFile, FsError> {
-        Self::create_file_inner(group_id, name, contents, Some(boot))
-    }
-
-    fn create_file_inner(
-        group_id: u16,
-        name: &[u8],
-        contents: &[u8],
-        boot: Option<Instant>,
-    ) -> Result<ProtectedFile, FsError> {
-        if let Some(boot) = boot {
-            info!("[+{} ms] create_file inner start", elapsed_ms(boot));
-        }
-
-        // Reject names that won't fit (need room for at least one NUL terminator)
-        let name_check_start = Instant::now();
-        if name.len() >= MAX_NAME_SIZE {
-            return Err(FsError::NameTooLong);
-        }
-        if let Some(boot) = boot {
-            info!(
-                "[+{} ms] create_file name check done (step={} ms)",
-                elapsed_ms(boot),
-                elapsed_ms(name_check_start)
-            );
-        }
-
-        let contents_check_start = Instant::now();
-        if contents.len() > MAX_CONTENTS_SIZE {
-            return Err(FsError::ContentsTooLarge);
-        }
-        if let Some(boot) = boot {
-            info!(
-                "[+{} ms] create_file contents check done (step={} ms)",
-                elapsed_ms(boot),
-                elapsed_ms(contents_check_start)
-            );
-        }
-
-        let init_start = Instant::now();
-        let mut file = ProtectedFile::default(); // zeroed
-        file.in_use = FILE_IN_USE;
-        file.group_id = group_id;
-        file.contents_len = contents.len() as u16;
-        if let Some(boot) = boot {
-            info!(
-                "[+{} ms] create_file init done (step={} ms)",
-                elapsed_ms(boot),
-                elapsed_ms(init_start)
-            );
-        }
-
-        // Safe bounded copies — panics are impossible because we checked above
-        let name_copy_start = Instant::now();
-        file.name[..name.len()].copy_from_slice(name);
-        if let Some(boot) = boot {
-            info!(
-                "[+{} ms] create_file name copy done (step={} ms)",
-                elapsed_ms(boot),
-                elapsed_ms(name_copy_start)
-            );
-        }
-
-        let contents_copy_start = Instant::now();
-        // Remaining bytes are already 0 (NUL padded) from Default
-        file.contents[..contents.len()].copy_from_slice(contents);
-        if let Some(boot) = boot {
-            info!(
-                "[+{} ms] create_file contents copy done (step={} ms)",
-                elapsed_ms(boot),
-                elapsed_ms(contents_copy_start)
-            );
-            info!("[+{} ms] create_file inner done", elapsed_ms(boot));
-        }
-
-        Ok(file)
     }
 
     /// Write a file to persistent flash storage.
@@ -288,7 +278,7 @@ impl Filesystem {
         &mut self,
         slot: u8,
         file: &ProtectedFile,
-        uuid: &[u8; UUID_SIZE],
+        uuid: Uuid,
         flash: &mut impl Flash,
     ) -> Result<(), FsError> {
         self.write_file_inner(slot, file, uuid, flash, None)
@@ -299,7 +289,7 @@ impl Filesystem {
         &mut self,
         slot: u8,
         file: &ProtectedFile,
-        uuid: &[u8; UUID_SIZE],
+        uuid: Uuid,
         flash: &mut impl Flash,
         boot: Instant,
     ) -> Result<(), FsError> {
@@ -310,7 +300,7 @@ impl Filesystem {
         &mut self,
         slot: u8,
         file: &ProtectedFile,
-        uuid: &[u8; UUID_SIZE],
+        uuid: Uuid,
         flash: &mut impl Flash,
         boot: Option<Instant>,
     ) -> Result<(), FsError> {
@@ -320,10 +310,10 @@ impl Filesystem {
         }
 
         let flash_addr = FILES_START_ADDR + STORED_FILE_SIZE * (idx as u32);
-        let length = file_total_size(file.contents_len);
+        let length = file_total_size(file.contents.len() as u16);
 
         // Update the cached FAT
-        self.fat[idx].uuid.copy_from_slice(uuid);
+        self.fat[idx].uuid = uuid;
         self.fat[idx].flash_addr = flash_addr;
         self.fat[idx].length = length;
         let fat_start = Instant::now();
@@ -337,7 +327,8 @@ impl Filesystem {
         }
 
         // Only erase the pages needed for the actual data (not all 9)
-        let pages_needed = (length as u32 + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE;
+        let pages_needed = (length as u32).div_ceil(FLASH_PAGE_SIZE);
+        // let pages_needed = (length as u32 + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE;
         for i in 0..pages_needed {
             let erase_start = Instant::now();
             flash.erase_page(flash_addr + FLASH_PAGE_SIZE * i)?;
@@ -370,28 +361,27 @@ impl Filesystem {
     }
 
     /// Read a file from persistent flash storage.
-    pub fn read_file(
-        &self,
-        slot: u8,
-        dest: &mut ProtectedFile,
-        flash: &impl Flash,
-    ) -> Result<(), FsError> {
+    pub fn read_file(&self, slot: u8, flash: &impl Flash) -> Result<ProtectedFile, FsError> {
         let idx = Self::validate_slot(slot)?;
 
         let entry = &self.fat[idx];
         if entry.is_empty() {
             return Err(FsError::InvalidFatEntry);
         }
+        // Allocate a local uninitialized buffer for the bytes
+        let mut bytes = [0u8; size_of::<ProtectedFile>()];
 
-        let buf = unsafe {
-            core::slice::from_raw_parts_mut(
-                dest as *mut ProtectedFile as *mut u8,
-                entry.length as usize,
-            )
+        // Read from flash into bytes
+        flash.read(entry.flash_addr, &mut bytes);
+
+        // Interpret bytes as ProtectedFile
+        let file = unsafe {
+            // pointer to bytes as *const ProtectedFile
+            let p = bytes.as_ptr() as *const ProtectedFile;
+            // read_unaligned to avoid alignment UB if alignment isn't guaranteed
+            ptr::read_unaligned(p)
         };
-        flash.read(entry.flash_addr, buf);
-
-        Ok(())
+        Ok(file)
     }
 
     /// Get read-only access to a FAT entry's metadata.
