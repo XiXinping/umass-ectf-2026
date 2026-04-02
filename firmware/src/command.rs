@@ -1,9 +1,13 @@
 //! Command dispatch and handlers for the eCTF host protocol.
 
+use uuid::Uuid;
+
 use crate::authentication::{PIN_LENGTH, SecurityStatus, verify_pin};
-use crate::filesystem::{self, Filesystem, Flash};
 use crate::host::{HostUart, MsgType};
 use crate::secrets::{PIN_HASH, PIN_SALT};
+use crate::secure_filesystem::{
+    self, Filesystem, Flash, FsError, MAX_CONTENTS_SIZE, MAX_NAME_SIZE, ProtectedFile, UUID_SIZE,
+};
 
 /// Dispatch a received command to the appropriate handler.
 #[inline(never)]
@@ -60,18 +64,18 @@ fn cmd_list(
     // Response format expected by host tools:
     //   nfiles (4 bytes u32 LE) + per-file entries (35 bytes each)
     // Entry: slot(1) + group_id(2) + name(32)
-    const ENTRY_SIZE: usize = 1 + 2 + filesystem::MAX_NAME_SIZE; // 35
+    const ENTRY_SIZE: usize = 1 + 2 + MAX_NAME_SIZE; // 35
     const HEADER_SIZE: usize = 4; // nfiles u32
 
     // Read file header from flash: in_use(4) + group_id(2) + name(32)
-    const FILE_HDR_SIZE: usize = 4 + 2 + filesystem::MAX_NAME_SIZE; // 38
+    const FILE_HDR_SIZE: usize = 4 + 2 + MAX_NAME_SIZE; // 38
 
     let mut nfiles: u32 = 0;
     // Build the response body in buf starting after a 38-byte scratch area
     // Layout: [scratch 38 bytes for flash reads][response: nfiles(4) + entries...]
     let resp_off = FILE_HDR_SIZE; // start response after scratch area
 
-    for slot in 0..(filesystem::MAX_FILE_COUNT as u8) {
+    for slot in 0..(secure_filesystem::MAX_FILE_COUNT as u8) {
         let entry = match fs.get_file_metadata(slot) {
             Ok(e) => e,
             Err(_) => continue,
@@ -85,22 +89,22 @@ fn cmd_list(
         flash.read(entry.flash_addr, &mut buf[..FILE_HDR_SIZE]);
 
         let in_use = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-        if in_use != filesystem::FILE_IN_USE {
+        if in_use != secure_filesystem::FILE_IN_USE {
             continue;
         }
 
         // Save values from scratch area before writing into response area
         let group_lo = buf[4];
         let group_hi = buf[5];
-        let mut name = [0u8; filesystem::MAX_NAME_SIZE];
-        name.copy_from_slice(&buf[6..6 + filesystem::MAX_NAME_SIZE]);
+        let mut name = [0u8; MAX_NAME_SIZE];
+        name.copy_from_slice(&buf[6..6 + MAX_NAME_SIZE]);
 
         // Copy entry into response area
         let entry_off = resp_off + HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
         buf[entry_off] = slot;
         buf[entry_off + 1] = group_lo;
         buf[entry_off + 2] = group_hi;
-        buf[entry_off + 3..entry_off + 3 + filesystem::MAX_NAME_SIZE].copy_from_slice(&name);
+        buf[entry_off + 3..entry_off + 3 + MAX_NAME_SIZE].copy_from_slice(&name);
 
         nfiles += 1;
     }
@@ -144,9 +148,7 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
 
     let _pin = &buf[PIN_OFF..PIN_OFF + 6];
     let slot = buf[SLOT_OFF];
-    let uuid: &[u8; filesystem::UUID_SIZE] = buf[UUID_OFF..UUID_OFF + filesystem::UUID_SIZE]
-        .try_into()
-        .unwrap();
+    let uuid = Uuid::from_slice(&buf[UUID_OFF..UUID_OFF + secure_filesystem::UUID_SIZE]).unwrap();
     host.print_debug("Read: Parsed slot and UUID\n");
 
     // Get file metadata from FAT
@@ -166,15 +168,15 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
     }
     host.print_debug("Read: Entry is not empty\n");
 
-    // // Verify UUID matches
-    // if entry.uuid != *uuid {
-    //     host.print_error("UUID mismatch");
-    //     return;
-    // }
+    // Verify UUID matches
+    if entry.uuid != uuid {
+        host.print_error("UUID mismatch");
+        return;
+    }
     host.print_debug("Read: UUID verified\n");
 
     // Allocate buffer and read file from flash
-    let mut file_buf = [0u8; filesystem::MAX_CONTENTS_SIZE + 40]; // +40 for metadata
+    let mut file_buf = [0u8; MAX_CONTENTS_SIZE + 40]; // +40 for metadata
     if entry.length as usize > file_buf.len() {
         host.print_error("File too large");
         return;
@@ -185,7 +187,7 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
 
     // Extract the contents from the file structure
     // Layout: in_use(4) + group_id(2) + name(32) + contents_len(2) + contents(...)
-    const CONTENTS_LEN_OFF: usize = 4 + 2 + filesystem::MAX_NAME_SIZE; // 38
+    const CONTENTS_LEN_OFF: usize = 4 + 2 + MAX_NAME_SIZE; // 38
     const METADATA_SIZE: usize = CONTENTS_LEN_OFF + 2; // 40
     if (entry.length as usize) < METADATA_SIZE {
         host.print_error("Stored file metadata too short");
@@ -195,9 +197,7 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
         u16::from_le_bytes([file_buf[CONTENTS_LEN_OFF], file_buf[CONTENTS_LEN_OFF + 1]]) as usize;
     host.print_debug("Read: Extracted contents length\n");
 
-    if contents_len > filesystem::MAX_CONTENTS_SIZE
-        || METADATA_SIZE + contents_len > entry.length as usize
-    {
+    if contents_len > MAX_CONTENTS_SIZE || METADATA_SIZE + contents_len > entry.length as usize {
         host.print_error("Invalid file contents length");
         return;
     }
@@ -205,18 +205,17 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
 
     // Send back payload in host-tools format: name(32) + contents
     const NAME_OFF: usize = 4 + 2; // after in_use + group_id
-    let name = &file_buf[NAME_OFF..NAME_OFF + filesystem::MAX_NAME_SIZE];
+    let name = &file_buf[NAME_OFF..NAME_OFF + MAX_NAME_SIZE];
     let contents = &file_buf[METADATA_SIZE..METADATA_SIZE + contents_len];
     host.print_debug("Read: Contents (hex):");
     host.print_hex_debug(contents);
     host.print_debug("Read: Contents debug sent\n");
 
-    let mut resp = [0u8; filesystem::MAX_NAME_SIZE + filesystem::MAX_CONTENTS_SIZE];
-    resp[..filesystem::MAX_NAME_SIZE].copy_from_slice(name);
-    resp[filesystem::MAX_NAME_SIZE..filesystem::MAX_NAME_SIZE + contents_len]
-        .copy_from_slice(contents);
+    let mut resp = [0u8; MAX_NAME_SIZE + MAX_CONTENTS_SIZE];
+    resp[..MAX_NAME_SIZE].copy_from_slice(name);
+    resp[MAX_NAME_SIZE..MAX_NAME_SIZE + contents_len].copy_from_slice(contents);
 
-    let resp_len = filesystem::MAX_NAME_SIZE + contents_len;
+    let resp_len = MAX_NAME_SIZE + contents_len;
     let _ = host.write_packet(MsgType::Read, &resp[..resp_len]);
     host.print_debug("Read: Sent file contents response\n");
 }
@@ -269,34 +268,30 @@ fn cmd_write(
     let _pin = &buf[PIN_OFF..PIN_OFF + 6];
     let slot = buf[SLOT_OFF];
     let group_id = u16::from_le_bytes([buf[GROUP_OFF], buf[GROUP_OFF + 1]]);
-    let name_raw = &buf[NAME_OFF..NAME_OFF + filesystem::MAX_NAME_SIZE];
+    let name_raw = &buf[NAME_OFF..NAME_OFF + MAX_NAME_SIZE];
     let name_len = name_raw
         .iter()
         .position(|&b| b == 0)
         .unwrap_or(name_raw.len());
     let name = &name_raw[..name_len];
-    let uuid: &[u8; filesystem::UUID_SIZE] = buf[UUID_OFF..UUID_OFF + filesystem::UUID_SIZE]
-        .try_into()
-        .unwrap();
+    let uuid: &[u8; UUID_SIZE] = buf[UUID_OFF..UUID_OFF + UUID_SIZE].try_into().unwrap();
     let contents_len = u16::from_le_bytes([buf[CLEN_OFF], buf[CLEN_OFF + 1]]) as usize;
 
     // Validate contents_len against actual packet payload
-    if contents_len > filesystem::MAX_CONTENTS_SIZE
-        || CONTENTS_OFF + contents_len > pkt_len as usize
-    {
+    if contents_len > MAX_CONTENTS_SIZE || CONTENTS_OFF + contents_len > pkt_len as usize {
         host.print_error("Invalid contents length");
         return;
     }
 
     let contents = &buf[CONTENTS_OFF..CONTENTS_OFF + contents_len];
 
-    let file = match Filesystem::create_file(group_id, name, contents) {
+    let file = match ProtectedFile::create(group_id, uuid, name, contents) {
         Ok(f) => f,
-        Err(filesystem::FsError::NameTooLong) => {
+        Err(FsError::NameTooLong) => {
             host.print_error("Create file failed: name too long");
             return;
         }
-        Err(filesystem::FsError::ContentsTooLarge) => {
+        Err(FsError::ContentsTooLarge) => {
             host.print_error("Create file failed: contents too large");
             return;
         }
@@ -398,14 +393,16 @@ fn cmd_receive(
     }
 
     // Parse response: uuid = buf[0..16], file_t = buf[16..]
-    let uuid: &[u8; filesystem::UUID_SIZE] = buf[..filesystem::UUID_SIZE].try_into().unwrap();
+    let uuid = Uuid::from_slice(&buf[..UUID_SIZE]).unwrap();
 
     // Reconstruct File from raw bytes at buf[16..]
-    let file_off = filesystem::UUID_SIZE;
+    let file_off = UUID_SIZE;
     let file_bytes = &buf[file_off..recv_len as usize];
 
-    let file: filesystem::File =
-        unsafe { core::ptr::read_unaligned(file_bytes.as_ptr() as *const filesystem::File) };
+    let file: ProtectedFile =
+        unsafe { core::ptr::read_unaligned(file_bytes.as_ptr() as *const ProtectedFile) };
+
+    // Add signature check
 
     // Write received file to local flash
     if let Err(_) = fs.write_file(write_slot, &file, uuid, flash) {
@@ -478,9 +475,9 @@ fn cmd_listen(
         MsgType::Interrogate => {
             // Build file list response in buf:
             //   n_files(4 bytes u32 LE) + per-file entries (slot(1) + group_id(2) + name(32) = 35 each)
-            const ENTRY_SIZE: usize = 1 + 2 + filesystem::MAX_NAME_SIZE; // 35
+            const ENTRY_SIZE: usize = 1 + 2 + MAX_NAME_SIZE; // 35
             const HEADER_SIZE: usize = 4; // n_files u32
-            const FILE_HDR_SIZE: usize = 4 + 2 + filesystem::MAX_NAME_SIZE; // 38
+            const FILE_HDR_SIZE: usize = 4 + 2 + MAX_NAME_SIZE; // 38
 
             let mut nfiles: u32 = 0;
             let resp_off = FILE_HDR_SIZE; // scratch area for flash reads
@@ -503,15 +500,14 @@ fn cmd_listen(
 
                 let group_lo = buf[4];
                 let group_hi = buf[5];
-                let mut name = [0u8; filesystem::MAX_NAME_SIZE];
-                name.copy_from_slice(&buf[6..6 + filesystem::MAX_NAME_SIZE]);
+                let mut name = [0u8; MAX_NAME_SIZE];
+                name.copy_from_slice(&buf[6..6 + MAX_NAME_SIZE]);
 
                 let entry_off = resp_off + HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
                 buf[entry_off] = slot;
                 buf[entry_off + 1] = group_lo;
                 buf[entry_off + 2] = group_hi;
-                buf[entry_off + 3..entry_off + 3 + filesystem::MAX_NAME_SIZE]
-                    .copy_from_slice(&name);
+                buf[entry_off + 3..entry_off + 3 + MAX_NAME_SIZE].copy_from_slice(&name);
 
                 nfiles += 1;
             }
