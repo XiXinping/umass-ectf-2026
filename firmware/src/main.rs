@@ -35,8 +35,6 @@ const MAX_MSG_SIZE: usize = 8268;
 fn main() -> ! {
     unsafe { set_vtor(0x0000_6000) };
 
-    info!("Hello world!");
-
     let p = embassy_mspm0::init(Default::default());
 
     let mut config = Config::default();
@@ -61,9 +59,8 @@ fn main() -> ! {
         "Size of Protected File: {}",
         size_of::<ectf_2026::secure_filesystem::ProtectedFile>()
     );
-    let mut buf = [0u8; MAX_MSG_SIZE];
     loop {
-        info!("ooga booga");
+        let mut buf = [0u8; MAX_MSG_SIZE];
         match host.read_packet(&mut buf, MAX_MSG_SIZE as u16) {
             Ok((msg_type, len)) => {
                 host.print_debug("Got cmd:");

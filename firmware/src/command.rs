@@ -56,18 +56,18 @@ fn cmd_list(
     fs: &Filesystem,
 ) {
     host.print_debug("Checking PIN\n");
-    if buf.len() < PIN_LENGTH {
-        host.print_debug("Invalid pin length!");
+    if pkt_len < PIN_LENGTH as u16 {
+        host.print_error("Invalid pin length!");
         return;
     }
     let pin = &buf[0..PIN_LENGTH];
     match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
         SecurityStatus::InvalidLength => {
-            host.print_debug("Invalid pin length. Pin must be 6 digits.");
+            host.print_error("Invalid pin length. Pin must be 6 digits.");
             return;
         }
         SecurityStatus::AuthFail => {
-            host.print_debug("Nice try! Invalid pin!");
+            host.print_error("Nice try! Invalid pin!");
             return;
         }
         SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
@@ -141,18 +141,18 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
     }
 
     host.print_debug("Checking PIN\n");
-    if buf.len() < PIN_LENGTH {
-        host.print_debug("Invalid pin length!");
+    if pkt_len < PIN_LENGTH as u16 {
+        host.print_error("Invalid pin length!");
         return;
     }
     let pin = &buf[0..PIN_LENGTH];
     match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
         SecurityStatus::InvalidLength => {
-            host.print_debug("Invalid pin length. Pin must be 6 digits.");
+            host.print_error("Invalid pin length. Pin must be 6 digits.");
             return;
         }
         SecurityStatus::AuthFail => {
-            host.print_debug("Nice try! Invalid pin!");
+            host.print_error("Nice try! Invalid pin!");
             return;
         }
         SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
@@ -166,26 +166,26 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
     let file = match fs.read_file(slot, flash) {
         Ok(f) => f,
         Err(FsError::EmptySlot) => {
-            host.print_debug(&format!(20; "Slot {} is empty", slot).unwrap());
+            host.print_error(&format!(20; "Slot {} is empty", slot).unwrap());
             return;
         }
         Err(FsError::InvalidSlot) => {
-            host.print_debug(&format!(20; "Invalid slot: {}", slot).unwrap());
+            host.print_error(&format!(20; "Invalid slot: {}", slot).unwrap());
             return;
         }
         Err(FsError::InvalidSignature) => {
-            host.print_debug("Invalid signature");
+            host.print_error("Invalid signature");
             return;
         }
         Err(_) => {
-            host.print_debug("Something has gone wrong!");
+            host.print_error("Something has gone wrong!");
             return;
         }
     };
 
     // Check that the file UUID matches the requested UUID
     if file.uuid != uuid {
-        host.print_debug("UUID does not match requested file UUID!");
+        host.print_error("UUID does not match requested file UUID!");
         return;
     }
 
@@ -249,7 +249,7 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
     let contents = match file.decrypt() {
         Ok(contents) => contents,
         Err(FileError::NoReadPermission) => {
-            host.print_debug(
+            host.print_error(
                 &format!(
                     64; "HSM does not have permission to write files from group: {:#x}",
                     file.group_id
@@ -259,11 +259,11 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
             return;
         }
         Err(FileError::DecryptError) => {
-            host.print_debug("Error while decrypting file!");
+            host.print_error("Error while decrypting file!");
             return;
         }
         Err(_) => {
-            host.print_debug("Something went wrong!");
+            host.print_error("Something went wrong!");
             return;
         }
     };
@@ -315,11 +315,11 @@ fn cmd_write(
     let pin = &buf[0..PIN_LENGTH];
     match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
         SecurityStatus::InvalidLength => {
-            host.print_debug("Invalid pin length. Pin must be 6 digits.");
+            host.print_error("Invalid pin length. Pin must be 6 digits.");
             return;
         }
         SecurityStatus::AuthFail => {
-            host.print_debug("Nice try! Invalid pin!");
+            host.print_error("Nice try! Invalid pin!");
             return;
         }
         SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
@@ -401,7 +401,7 @@ fn cmd_receive(
 ) {
     // Parse receive_command_t: pin(6) + read_slot(1) + write_slot(1) = 8 bytes
     if buf.len() < 8 {
-        host.print_debug("Invalid packet length!");
+        host.print_error("Invalid packet length!");
         return;
     }
     const READ_SLOT_OFF: usize = 6;
@@ -414,11 +414,11 @@ fn cmd_receive(
     let pin = &buf[0..PIN_LENGTH];
     match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
         SecurityStatus::InvalidLength => {
-            host.print_debug("Invalid pin length. Pin must be 6 digits.");
+            host.print_error("Invalid pin length. Pin must be 6 digits.");
             return;
         }
         SecurityStatus::AuthFail => {
-            host.print_debug("Nice try! Invalid pin!");
+            host.print_error("Nice try! Invalid pin!");
             return;
         }
         SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
@@ -551,11 +551,11 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
     let pin = &buf[0..PIN_LENGTH];
     match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
         SecurityStatus::InvalidLength => {
-            host.print_debug("Invalid pin length. Pin must be 6 digits.");
+            host.print_error("Invalid pin length. Pin must be 6 digits.");
             return;
         }
         SecurityStatus::AuthFail => {
-            host.print_debug("Nice try! Invalid pin!");
+            host.print_error("Nice try! Invalid pin!");
             return;
         }
         SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
@@ -683,19 +683,19 @@ fn cmd_listen(
             let file = match fs.read_file(slot, flash) {
                 Ok(f) => f,
                 Err(FsError::EmptySlot) => {
-                    host.print_debug(&format!(20; "Slot {} is empty", slot).unwrap());
+                    host.print_error(&format!(20; "Slot {} is empty", slot).unwrap());
                     return;
                 }
                 Err(FsError::InvalidSlot) => {
-                    host.print_debug(&format!(20; "Invalid slot: {}", slot).unwrap());
+                    host.print_error(&format!(20; "Invalid slot: {}", slot).unwrap());
                     return;
                 }
                 Err(FsError::InvalidSignature) => {
-                    host.print_debug("File has invalid signature!");
+                    host.print_error("File has invalid signature!");
                     return;
                 }
                 Err(_) => {
-                    host.print_debug("Something has gone wrong!");
+                    host.print_error("Something has gone wrong!");
                     return;
                 }
             };
@@ -704,7 +704,7 @@ fn cmd_listen(
                 if let Some(pk) = get_public_key(file.group_id, PermissionType::Receive) {
                     PublicKey::from(pk)
                 } else {
-                    host.print_debug("Invalid group ID");
+                    host.print_error("Invalid group ID");
                     return;
                 };
 
@@ -716,20 +716,6 @@ fn cmd_listen(
                     return;
                 }
             };
-            // Convert the file into a Vec of raw bytes
-            // let file_bytes = match Vec::from_slice(unsafe {
-            //     core::slice::from_raw_parts(
-            //         (&file as *const ProtectedFile) as *const u8,
-            //         core::mem::size_of::<ProtectedFile>(),
-            //     )
-            // }) {
-            //     Ok(bytes) => bytes,
-            //     Err(_) => {
-            //         host.print_error("Unable to serialize file!");
-            //         return;
-            //     }
-            // };
-
             let file_vec: Vec<u8, MAX_PLAINTEXT_SIZE> = match Vec::from_slice(file_bytes) {
                 Ok(v) => v,
                 Err(_) => {
