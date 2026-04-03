@@ -31,7 +31,7 @@ mod gcm_tests {
         let iv: &[u8; 12] = &iv_data;
 
         let (ciphertext_out, auth_tag_out) = 
-        crypto::aes_gcm_encrypt(
+        crypto::aes_gcm_encrypt::<256>(
             plaintext, 
             key, 
             iv, 
@@ -70,7 +70,7 @@ mod gcm_tests {
         }
         let iv: &[u8; 12] = &iv_data;
 
-        let plaintext = crypto::aes_gcm_decrypt(
+        let plaintext = crypto::aes_gcm_decrypt::<256>(
                 ciphertext,
                 key,
                 iv,
@@ -109,7 +109,7 @@ mod gcm_tests {
         let iv: &[u8; 12] = &iv_data;
 
         let (ciphertext_out, auth_tag_out) = 
-        crypto::aes_gcm_encrypt(
+        crypto::aes_gcm_encrypt::<256>(
             plaintext, 
             key, 
             iv, 
@@ -151,7 +151,7 @@ mod gcm_tests {
 
         let additional_data: &[u8; 4] = b"1234";
 
-        let plaintext = crypto::aes_gcm_decrypt(
+        let plaintext = crypto::aes_gcm_decrypt::<256>(
                 expected_ciphertext,
                 key,
                 iv,
@@ -188,7 +188,7 @@ mod gcm_tests {
 
         let additional_data: &[u8; 4] = b"1234";
 
-        let plaintext = crypto::aes_gcm_decrypt(
+        let plaintext = crypto::aes_gcm_decrypt::<256>(
                 expected_ciphertext,
                 key,
                 iv,
@@ -225,7 +225,7 @@ mod gcm_tests {
 
         let additional_data: &[u8; 4] = b"1234";
 
-        let plaintext = crypto::aes_gcm_decrypt(
+        let plaintext = crypto::aes_gcm_decrypt::<256>(
                 expected_ciphertext,
                 key,
                 iv,
