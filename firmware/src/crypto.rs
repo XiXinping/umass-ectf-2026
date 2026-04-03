@@ -1,14 +1,15 @@
+use crate::serialization::{serde_signature, serde_uuid, serde_x25519_pubkey};
 use crate::{
     challenge_response::{AuthError, PRIVATE_KEY_SIZE},
-    filesystem::MAX_CONTENTS_SIZE,
     random::SecureRng,
 };
 use aes_gcm::{
-    Aes256Gcm, Key, Nonce, Tag as GcmTag,
+    Aes256Gcm, Key, Nonce,
     aead::{AeadInPlace, KeyInit, heapless::Vec as AesVec},
 };
 use heapless::Vec;
 use hkdf::Hkdf;
+use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
@@ -18,6 +19,10 @@ use p256::ecdsa::{
     Signature, VerifyingKey,
     signature::{Signer, Verifier},
 };
+
+// The size of ProtectedFile rounded to the nearest multiple of the 256 (the AES block size).
+pub const MAX_PLAINTEXT_SIZE: usize = 8448;
+pub const GCM_TAG_SIZE: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
 pub enum CryptoError {
@@ -39,24 +44,27 @@ pub enum CryptoError {
 
 /// A struct containing the result of calling assymetric_encrypt(). The result of a hybrid
 /// encryption contains the ciphertext, the AES shared secret, and an AES-GCM authentication tag.
-pub struct AsymmetricEncrypted {
-    pub ciphertext: Vec<u8, MAX_CONTENTS_SIZE>,
+#[repr(C)]
+#[derive(Serialize, Deserialize)]
+pub struct AsymmetricEncrypted<const N: usize> {
+    pub ciphertext: Vec<u8, N>,
     pub nonce: [u8; 12],
+    #[serde(with = "serde_x25519_pubkey")]
     pub cipher_public_key: PublicKey,
-    pub auth_tag: GcmTag,
+    pub auth_tag: [u8; GCM_TAG_SIZE],
 }
 
-pub fn aes_gcm_encrypt(
+pub fn aes_gcm_encrypt<const N: usize>(
     plaintext: &[u8],
     key: &[u8; 32],
     iv: &[u8; 12],
     associated_data: &[u8],
-) -> Result<(Vec<u8, MAX_CONTENTS_SIZE>, GcmTag), aes_gcm::Error> {
+) -> Result<(Vec<u8, N>, [u8; GCM_TAG_SIZE]), aes_gcm::Error> {
     let key = Key::<Aes256Gcm>::from_slice(key);
     let nonce = Nonce::from_slice(iv);
     let cipher = Aes256Gcm::new(key);
 
-    let mut buffer: AesVec<u8, MAX_CONTENTS_SIZE> = AesVec::new();
+    let mut buffer: AesVec<u8, N> = AesVec::new();
 
     buffer
         .extend_from_slice(plaintext)
@@ -64,27 +72,27 @@ pub fn aes_gcm_encrypt(
 
     let auth_tag = cipher.encrypt_in_place_detached(nonce, associated_data, &mut buffer)?;
 
-    Ok((Vec::from_slice(buffer.as_slice()).unwrap(), auth_tag))
+    Ok((Vec::from_slice(buffer.as_slice()).unwrap(), auth_tag.into()))
 }
 
-pub fn aes_gcm_decrypt(
+pub fn aes_gcm_decrypt<const N: usize>(
     ciphertext: &[u8],
     key: &[u8; 32],
     iv: &[u8; 12],
-    auth_tag: &GcmTag,
+    auth_tag: &[u8; GCM_TAG_SIZE],
     associated_data: &[u8],
-) -> Result<Vec<u8, MAX_CONTENTS_SIZE>, aes_gcm::Error> {
+) -> Result<Vec<u8, N>, aes_gcm::Error> {
     let key = Key::<Aes256Gcm>::from_slice(key);
     let nonce = Nonce::from_slice(iv);
     let cipher = Aes256Gcm::new(key);
 
-    let mut buffer: Vec<u8, MAX_CONTENTS_SIZE> = Vec::new();
+    let mut buffer: Vec<u8, N> = Vec::new();
 
     buffer
         .extend_from_slice(ciphertext)
         .map_err(|_| aes_gcm::Error)?;
 
-    cipher.decrypt_in_place_detached(nonce, associated_data, &mut buffer, auth_tag)?;
+    cipher.decrypt_in_place_detached(nonce, associated_data, &mut buffer, auth_tag.into())?;
 
     Ok(buffer)
 }
@@ -92,10 +100,10 @@ pub fn aes_gcm_decrypt(
 /// Encrypts the contents of a file using assymetric cryptography. The output contains the
 /// ciphertext, the shared secret, and an auth tag
 /// Currently initializes a new TRNG instance every call. This may be changed.
-pub fn asymmetric_encrypt(
-    plaintext: &Vec<u8, MAX_CONTENTS_SIZE>,
+pub fn asymmetric_encrypt<const N: usize>(
+    plaintext: &Vec<u8, N>,
     public_key: &PublicKey,
-) -> Result<AsymmetricEncrypted, CryptoError> {
+) -> Result<AsymmetricEncrypted<N>, CryptoError> {
     // Can just generate 32 bytes using random_bytes() and use that as the ephemeral secret
     let mut rng = SecureRng::new().map_err(|_| CryptoError::RngError)?;
     let ephemeral_secret = EphemeralSecret::random_from_rng(&mut rng);
@@ -124,13 +132,13 @@ pub fn asymmetric_encrypt(
 /// Decrypts the contents of a file encrypted with assymetric cryptography. Uses the ciphertext
 /// public key generated from assymetric_encrypt() to derive a symmetric key to decrypt the
 /// ciphertext.
-pub fn asymmetric_decrypt(
-    ciphertext: &Vec<u8, MAX_CONTENTS_SIZE>,
+pub fn asymmetric_decrypt<const N: usize>(
+    ciphertext: &Vec<u8, N>,
     nonce: &[u8; 12],
     cipher_public_key: &PublicKey,
-    auth_tag: &GcmTag,
+    auth_tag: &[u8; GCM_TAG_SIZE],
     private_key: &StaticSecret,
-) -> Result<Vec<u8, MAX_CONTENTS_SIZE>, CryptoError> {
+) -> Result<Vec<u8, N>, CryptoError> {
     let shared_secret = private_key.diffie_hellman(cipher_public_key);
 
     let hk = Hkdf::<Sha256>::new(None, shared_secret.as_bytes());

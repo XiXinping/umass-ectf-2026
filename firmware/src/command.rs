@@ -2,14 +2,24 @@
 
 use heapless::{Vec, format};
 use uuid::Uuid;
+use x25519_dalek::{PublicKey, StaticSecret};
 
 use crate::authentication::{PIN_LENGTH, SecurityStatus, verify_pin};
-use crate::host::{HostUart, MsgType};
-use crate::secrets::{PIN_HASH, PIN_SALT};
-use crate::secure_filesystem::{
-    self, FILE_IN_USE, FileError, Filesystem, Flash, FsError, MAX_CONTENTS_SIZE, MAX_FILE_COUNT,
-    MAX_NAME_SIZE, ProtectedFile, UUID_SIZE,
+use crate::challenge_response::gen_challenge_nonce;
+use crate::crypto::{
+    AsymmetricEncrypted, CryptoError, MAX_PLAINTEXT_SIZE, asymmetric_decrypt, asymmetric_encrypt,
+    ecc_sign_file_digest,
 };
+use crate::host::{HostUart, MsgType};
+use crate::permission::{PermissionType, get_private_key, get_public_key, has_permission};
+use crate::secrets::{PERMISSIONS, PIN_HASH, PIN_SALT};
+use crate::secure_filesystem::{
+    self, FILE_IN_USE, FileError, FileMetadata, Filesystem, Flash, FsError, MAX_CONTENTS_SIZE,
+    MAX_FILE_COUNT, MAX_NAME_SIZE, MAX_SERIALIZED_FILE, NONCE_SIZE, ProtectedFile, UUID_SIZE,
+};
+
+const ENCRYPTED_RECEIVE_SIZE: usize = size_of::<AsymmetricEncrypted<MAX_PLAINTEXT_SIZE>>() + 2;
+const MAX_SERIALIZED_ENCRYPTED: usize = MAX_PLAINTEXT_SIZE + 128;
 
 /// Dispatch a received command to the appropriate handler.
 #[inline(never)]
@@ -161,6 +171,10 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
         }
         Err(FsError::InvalidSlot) => {
             host.print_debug(&format!(20; "Invalid slot: {}", slot).unwrap());
+            return;
+        }
+        Err(FsError::InvalidSignature) => {
+            host.print_debug("Invalid signature");
             return;
         }
         Err(_) => {
@@ -412,20 +426,20 @@ fn cmd_receive(
 
     // Build receive_request_t (41 bytes): slot(1) + group_permission_t[8] (5 bytes each)
     // global_permissions from secrets.h: {0x1234, r, !w, !recv}, {0x4321, r, w, recv}, rest zeroed
-    let mut request_buf = [0u8; 41];
+    let mut request_buf = [0u8; 1];
     request_buf[0] = read_slot;
-    // permission[0]: group_id=0x1234, read=true, write=false, receive=false
-    request_buf[1] = 0x34; // group_id LE low
-    request_buf[2] = 0x12; // group_id LE high
-    request_buf[3] = 1; // read
-    request_buf[4] = 0; // write
-    request_buf[5] = 0; // receive
-    // permission[1]: group_id=0x4321, read=true, write=true, receive=true
-    request_buf[6] = 0x21;
-    request_buf[7] = 0x43;
-    request_buf[8] = 1;
-    request_buf[9] = 1;
-    request_buf[10] = 1;
+    // // permission[0]: group_id=0x1234, read=true, write=false, receive=false
+    // request_buf[1] = 0x34; // group_id LE low
+    // request_buf[2] = 0x12; // group_id LE high
+    // request_buf[3] = 1; // read
+    // request_buf[4] = 0; // write
+    // request_buf[5] = 0; // receive
+    // // permission[1]: group_id=0x4321, read=true, write=true, receive=true
+    // request_buf[6] = 0x21;
+    // request_buf[7] = 0x43;
+    // request_buf[8] = 1;
+    // request_buf[9] = 1;
+    // request_buf[10] = 1;
     // permissions[2..7] remain zeroed
 
     // Send request to neighbor
@@ -440,27 +454,89 @@ fn cmd_receive(
         }
     };
 
-    // Parse challenge, send response
-
     if cmd != MsgType::Receive {
         host.print_error("Receive: opcode mismatch");
         return;
     }
 
-    // Parse response: uuid = buf[0..16], file_t = buf[16..]
-    let uuid = Uuid::from_slice(&buf[..UUID_SIZE]).unwrap();
+    if recv_len < ENCRYPTED_RECEIVE_SIZE as u16 {
+        host.print_error("Received file is incorrect size");
+        return;
+    }
 
-    // Reconstruct File from raw bytes at buf[16..]
-    let file_off = UUID_SIZE;
-    let file_bytes = &buf[file_off..recv_len as usize];
+    let payload_size = u16::from_le_bytes([buf[0], buf[1]]);
+    let buf = &buf[2..];
 
-    let file: ProtectedFile =
-        unsafe { core::ptr::read_unaligned(file_bytes.as_ptr() as *const ProtectedFile) };
+    if payload_size as usize != buf.len() {
+        host.print_error("Received file is incorrect size");
+        return;
+    }
+    // if buf.len() != size_of::<AsymmetricEncrypted<MAX_PLAINTEXT_SIZE>>() {
+    //     host.print_error("Received file is incorrect size");
+    //     return;
+    // }
+    // let mut out = core::mem::MaybeUninit::<AsymmetricEncrypted<MAX_PLAINTEXT_SIZE>>::uninit();
+    // unsafe {
+    //     core::ptr::copy_nonoverlapping(buf.as_ptr(), out.as_mut_ptr() as *mut u8, buf.len());
+    // }
+    // let encrypted = unsafe { out.assume_init() };
+    //
+    let encrypted: AsymmetricEncrypted<MAX_PLAINTEXT_SIZE> =
+        match postcard::from_bytes(&buf[..payload_size as usize]) {
+            Ok(e) => e,
+            Err(_) => {
+                host.print_error("Failed to deserialize encrypted payload!");
+                return;
+            }
+        };
+
+    let mut file_bytes: Option<Vec<u8, MAX_PLAINTEXT_SIZE>> = None;
+    for group in PERMISSIONS {
+        let receive_key = match get_private_key(group.group_id, PermissionType::Receive) {
+            Some(receive_key) => receive_key,
+            None => continue,
+        };
+        file_bytes = match asymmetric_decrypt(
+            &encrypted.ciphertext,
+            &encrypted.nonce,
+            &encrypted.cipher_public_key,
+            &encrypted.auth_tag,
+            &StaticSecret::from(receive_key),
+        ) {
+            Ok(bytes) => Some(bytes),
+            Err(CryptoError::AesGcmEncryptError) => {
+                continue;
+            }
+            Err(_) => {
+                host.print_error("Unable to decrypt received file!");
+                return;
+            }
+        };
+    }
+    let file_bytes = if let Some(bytes) = file_bytes {
+        bytes
+    } else {
+        host.print_error("HSM does not have permission to receive file!");
+        return;
+    };
+
+    let file: ProtectedFile = match postcard::from_bytes(&file_bytes) {
+        Ok(f) => f,
+        Err(_) => {
+            host.print_error("Failed to deserialize received file!");
+            return;
+        }
+    };
 
     // Add signature check
+    if file.verify_signature().is_err() {
+        host.print_error("Invalid signature on received file");
+        return;
+    }
+    host.print_debug("Verified signature of received file!");
 
     // Write received file to local flash
-    if let Err(_) = fs.write_file(write_slot, &file, uuid, flash) {
+    if fs.write_file(write_slot, &file, file.uuid, flash).is_err() {
         host.print_error("Writing received file failed");
         return;
     }
@@ -492,7 +568,9 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
     let (cmd, recv_len) = match uart1.read_packet(buf, 0xFFFF) {
         Ok(v) => v,
         Err(_) => {
-            host.print_error("Interrogate: read from neighbor failed");
+            host.print_error(
+                "Interrogate: read from neighbor failed! Have you tried enhanced interrogation?",
+            );
             return;
         }
     };
@@ -502,8 +580,34 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
         return;
     }
 
+    let buf = &buf[..recv_len as usize];
+    let metadata: Vec<FileMetadata, MAX_FILE_COUNT> = match postcard::from_bytes(buf) {
+        Ok(m) => m,
+        Err(_) => {
+            host.print_error("Failed to decode interrogation!");
+            return;
+        }
+    };
+
+    let mut out_buf: Vec<u8, { size_of::<FileMetadata>() * MAX_FILE_COUNT + 4 }> = Vec::new();
+    out_buf.extend_from_slice(&[0u8; 4]).unwrap();
+    let mut num_files = 0u32;
+    for meta in metadata {
+        if has_permission(meta.group_id, PermissionType::Receive) {
+            num_files += 1;
+        }
+        let mut buf = [0u8; size_of::<FileMetadata>()];
+        out_buf
+            .extend_from_slice(postcard::to_slice(&meta, &mut buf).unwrap())
+            .unwrap();
+    }
+    out_buf[..4].copy_from_slice(&num_files.to_le_bytes());
+    // out_buf.extend_from_slice(&metadata.len().to_le_bytes());
+    // out_buf.(metadata);
+    // let file: ProtectedFile = postcard::from_bytes(&buf[..len]);
+
     // Forward the list response to host as-is
-    let _ = host.write_packet(MsgType::Interrogate, &buf[..recv_len as usize]);
+    let _ = host.write_packet(MsgType::Interrogate, &out_buf);
 }
 
 #[inline(never)]
@@ -530,13 +634,15 @@ fn cmd_listen(
         MsgType::Interrogate => {
             // Build file list response in buf:
             //   n_files(4 bytes u32 LE) + per-file entries (slot(1) + group_id(2) + name(32) = 35 each)
-            const ENTRY_SIZE: usize = 1 + 2 + MAX_NAME_SIZE; // 35
-            const HEADER_SIZE: usize = 4; // n_files u32
-            const FILE_HDR_SIZE: usize = 4 + 2 + MAX_NAME_SIZE; // 38
+            // const ENTRY_SIZE: usize = 1 + 2 + MAX_NAME_SIZE; // 35
+            // const HEADER_SIZE: usize = 4; // n_files u32
+            // const FILE_HDR_SIZE: usize = 4 + 2 + MAX_NAME_SIZE; // 38
 
-            let mut nfiles: u32 = 0;
-            let resp_off = FILE_HDR_SIZE; // scratch area for flash reads
+            // let mut nfiles: u32 = 0;
+            // let resp_off = FILE_HDR_SIZE; // scratch area for flash reads
 
+            // Store the metadata of all files in the filesystem
+            let mut metadata: Vec<FileMetadata, 8> = Vec::new();
             for slot in 0..(MAX_FILE_COUNT as u8) {
                 let entry = match fs.get_file_metadata(slot) {
                     Ok(e) => e,
@@ -546,58 +652,114 @@ fn cmd_listen(
                     continue;
                 }
 
-                flash.read(entry.flash_addr, &mut buf[..FILE_HDR_SIZE]);
+                let file = match fs.read_file(slot, flash) {
+                    Ok(file) => file,
+                    Err(_) => continue,
+                };
 
-                let in_use = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-                if in_use != FILE_IN_USE {
+                if file.in_use != FILE_IN_USE {
                     continue;
                 }
-
-                let group_lo = buf[4];
-                let group_hi = buf[5];
-                let mut name = [0u8; MAX_NAME_SIZE];
-                name.copy_from_slice(&buf[6..6 + MAX_NAME_SIZE]);
-
-                let entry_off = resp_off + HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
-                buf[entry_off] = slot;
-                buf[entry_off + 1] = group_lo;
-                buf[entry_off + 2] = group_hi;
-                buf[entry_off + 3..entry_off + 3 + MAX_NAME_SIZE].copy_from_slice(&name);
-
-                nfiles += 1;
+                let _ = metadata.push(file.metadata(slot));
             }
 
-            buf[resp_off..resp_off + 4].copy_from_slice(&nfiles.to_le_bytes());
+            // let mut encrypted_metadata: Vec<AsymmetricEncrypted, 8> = Vec::new();
 
-            let total_len = HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
-            let _ = uart1.write_packet(MsgType::Interrogate, &buf[resp_off..resp_off + total_len]);
+            // buf[resp_off..resp_off + 4].copy_from_slice(&nfiles.to_le_bytes());
+
+            // let total_len = HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
+            let mut buf: Vec<u8, { size_of::<FileMetadata>() * MAX_FILE_COUNT }> = Vec::new();
+            // let _ = buf.extend_from_slice(&metadata.len().to_le_bytes());
+            if postcard::to_slice(&metadata, &mut buf).is_err() {
+                host.print_error("Failed to send file metadata");
+                return;
+            };
+
+            let _ = uart1.write_packet(MsgType::Interrogate, &buf);
         }
         MsgType::Receive => {
             let slot = uart_buf[0]; // receive_request_t.slot
 
-            // Read file from flash
-            let entry = match fs.get_file_metadata(slot) {
-                Ok(e) => e,
+            let file = match fs.read_file(slot, flash) {
+                Ok(f) => f,
+                Err(FsError::EmptySlot) => {
+                    host.print_debug(&format!(20; "Slot {} is empty", slot).unwrap());
+                    return;
+                }
+                Err(FsError::InvalidSlot) => {
+                    host.print_debug(&format!(20; "Invalid slot: {}", slot).unwrap());
+                    return;
+                }
+                Err(FsError::InvalidSignature) => {
+                    host.print_debug("File has invalid signature!");
+                    return;
+                }
                 Err(_) => {
-                    host.print_error("Listen: invalid file slot");
+                    host.print_debug("Something has gone wrong!");
                     return;
                 }
             };
-            if entry.is_empty() {
-                host.print_error("Listen: file slot empty");
-                return;
-            }
 
-            // Build receive_response_t in buf: uuid(16) + file_t(8232)
-            // Copy UUID from FAT entry
-            buf[..UUID_SIZE].copy_from_slice(&entry.uuid.to_bytes_le());
+            let receive_public_key =
+                if let Some(pk) = get_public_key(file.group_id, PermissionType::Receive) {
+                    PublicKey::from(pk)
+                } else {
+                    host.print_debug("Invalid group ID");
+                    return;
+                };
 
-            // Read file_t from flash into buf after UUID
-            let file_len = entry.length as usize;
-            flash.read(entry.flash_addr, &mut buf[UUID_SIZE..UUID_SIZE + file_len]);
+            let mut file_buf = [0u8; MAX_SERIALIZED_FILE];
+            let file_bytes = match postcard::to_slice(&file, &mut file_buf) {
+                Ok(bytes) => bytes,
+                Err(_) => {
+                    host.print_error("Unable to serialize files");
+                    return;
+                }
+            };
+            // Convert the file into a Vec of raw bytes
+            // let file_bytes = match Vec::from_slice(unsafe {
+            //     core::slice::from_raw_parts(
+            //         (&file as *const ProtectedFile) as *const u8,
+            //         core::mem::size_of::<ProtectedFile>(),
+            //     )
+            // }) {
+            //     Ok(bytes) => bytes,
+            //     Err(_) => {
+            //         host.print_error("Unable to serialize file!");
+            //         return;
+            //     }
+            // };
 
-            let total_len = UUID_SIZE + file_len;
-            let _ = uart1.write_packet(MsgType::Receive, &buf[..total_len]);
+            let file_vec: Vec<u8, MAX_PLAINTEXT_SIZE> = match Vec::from_slice(file_bytes) {
+                Ok(v) => v,
+                Err(_) => {
+                    host.print_error("Serialized file too large for encryption!");
+                    return;
+                }
+            };
+
+            // Encrypt the raw file bytes
+            let encrypted = match asymmetric_encrypt(&file_vec, &receive_public_key) {
+                Ok(encrypted) => encrypted,
+                Err(_) => {
+                    host.print_error("Failed to encrypt file!");
+                    return;
+                }
+            };
+
+            // Convert the result of the encryption into a Vec of raw bytes
+
+            let mut send_buf = [0u8; MAX_SERIALIZED_ENCRYPTED + 2];
+            let enc_bytes = match postcard::to_slice(&encrypted, &mut send_buf[2..]) {
+                Ok(bytes) => bytes,
+                Err(_) => {
+                    host.print_error("Failed to serialize encrypted file!");
+                    return;
+                }
+            };
+            let enc_len = enc_bytes.len();
+            send_buf[..2].copy_from_slice(&(enc_len as u16).to_le_bytes());
+            uart1.write_packet(MsgType::Receive, &send_buf[..2 + enc_len]);
         }
         _ => {
             host.print_error("Listen: bad message type from neighbor");

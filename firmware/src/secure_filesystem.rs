@@ -1,17 +1,17 @@
 // Secure Filesystem Implementation
 // provides a secure interface for file operations
 
+use crate::serialization::{serde_signature, serde_uuid, serde_x25519_pubkey};
 use core::{mem, ptr};
 use defmt::info;
 use embassy_time::Instant;
 use heapless::Vec;
 use hmac::{Hmac, Mac};
 use p256::ecdsa::Signature;
+use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use uuid::Uuid;
 use x25519_dalek::{PublicKey, StaticSecret};
-
-use aes_gcm::Tag as GcmTag;
 
 use crate::{
     crypto::{
@@ -24,6 +24,7 @@ use crate::{
 pub const MAX_FILE_COUNT: usize = 8;
 pub const MAX_NAME_SIZE: usize = 32;
 pub const MAX_CONTENTS_SIZE: usize = 8192;
+pub const MAX_SERIALIZED_FILE: usize = MAX_CONTENTS_SIZE + 512;
 pub const UUID_SIZE: usize = 16;
 
 // protected file structure constants
@@ -129,19 +130,29 @@ impl Default for FatEntry {
 
 /// On-flash protected file structure
 #[repr(C)]
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub struct ProtectedFile {
     // Metadata
     pub in_use: u32,
     pub group_id: u16,
     pub name: [u8; MAX_NAME_SIZE],
+    #[serde(with = "serde_uuid")]
     pub uuid: Uuid,
     pub nonce: [u8; NONCE_SIZE],
-    pub auth_tag: GcmTag,
+    pub auth_tag: [u8; 16],
+    #[serde(with = "serde_signature")]
     pub signature: Signature,
+    #[serde(with = "serde_x25519_pubkey")]
     pub ciphertext_public_key: PublicKey,
     /// The encrypted contents of the file.
     pub contents: Vec<u8, MAX_CONTENTS_SIZE>,
+}
+
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
+pub struct FileMetadata {
+    pub slot: u8,
+    pub group_id: u16,
+    pub name: [u8; MAX_NAME_SIZE],
 }
 
 // TO-DO: Add signature check
@@ -230,6 +241,14 @@ impl ProtectedFile {
         mac.update(uuid.as_bytes());
 
         mac.finalize().into_bytes().into()
+    }
+
+    pub fn metadata(&self, slot: u8) -> FileMetadata {
+        FileMetadata {
+            slot,
+            group_id: self.group_id,
+            name: self.name,
+        }
     }
 }
 
@@ -331,8 +350,13 @@ impl Filesystem {
             info!("[+{} ms] write_file inner start", elapsed_ms(boot));
         }
 
+        let mut buf = [0u8; MAX_SERIALIZED_FILE];
+        let serialized =
+            postcard::to_slice(file, &mut buf).map_err(|_| FsError::FlashWriteError)?;
+        let length = serialized.len() as u16;
+
         let flash_addr = FILES_START_ADDR + STORED_FILE_SIZE * (idx as u32);
-        let length = file_total_size(file.contents.len() as u16);
+        // let length = file_total_size(file.contents.len() as u16);
 
         // Update the cached FAT
         self.fat[idx].uuid = uuid;
@@ -365,11 +389,11 @@ impl Filesystem {
         }
 
         // Write the file to flash
-        let file_bytes = unsafe {
-            core::slice::from_raw_parts(file as *const ProtectedFile as *const u8, length as usize)
-        };
+        // let file_bytes = unsafe {
+        //     core::slice::from_raw_parts(file as *const ProtectedFile as *const u8, length as usize)
+        // };
         let write_start = Instant::now();
-        flash.write(flash_addr, file_bytes)?;
+        flash.write(flash_addr, serialized)?;
         if let Some(boot) = boot {
             info!(
                 "[+{} ms] write_file payload write done (step={} ms)",
@@ -390,19 +414,24 @@ impl Filesystem {
         if entry.is_empty() {
             return Err(FsError::InvalidFatEntry);
         }
-        // Allocate a local uninitialized buffer for the bytes
-        let mut bytes = [0u8; size_of::<ProtectedFile>()];
 
+        let len = entry.length as usize;
+        if len > MAX_SERIALIZED_FILE {
+            return Err(FsError::InvalidFatEntry);
+        }
+        let mut buf = [0u8; MAX_SERIALIZED_FILE];
         // Read from flash into bytes
-        flash.read(entry.flash_addr, &mut bytes);
+        flash.read(entry.flash_addr, &mut buf[..len]);
 
         // Interpret bytes as ProtectedFile
-        let file = unsafe {
-            // pointer to bytes as *const ProtectedFile
-            let p = bytes.as_ptr() as *const ProtectedFile;
-            // read_unaligned to avoid alignment UB if alignment isn't guaranteed
-            ptr::read_unaligned(p)
-        };
+        let file: ProtectedFile =
+            postcard::from_bytes(&buf[..len]).map_err(|_| FsError::InvalidFatEntry)?;
+        // let file = unsafe {
+        //     // pointer to bytes as *const ProtectedFile
+        //     let p = bytes.as_ptr() as *const ProtectedFile;
+        //     // read_unaligned to avoid alignment UB if alignment isn't guaranteed
+        //     ptr::read_unaligned(p)
+        // };
         match file.verify_signature() {
             Ok(()) => Ok(file),
             Err(_) => Err(FsError::InvalidSignature),

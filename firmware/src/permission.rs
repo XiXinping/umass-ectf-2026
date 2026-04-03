@@ -53,3 +53,17 @@ pub fn get_public_key(group_id: u16, permission_type: PermissionType) -> Option<
     }
     None
 }
+
+pub fn has_permission(group_id: u16, permission_type: PermissionType) -> bool {
+    for group in PERMISSIONS {
+        if group.group_id != group_id {
+            continue;
+        }
+        match permission_type {
+            PermissionType::Read => return group.read_perm,
+            PermissionType::Write => return group.write_perm,
+            PermissionType::Receive => return group.receive_perm,
+        }
+    }
+    false
+}

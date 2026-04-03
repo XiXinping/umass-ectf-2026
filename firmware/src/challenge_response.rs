@@ -34,7 +34,7 @@ pub enum AuthError {
 }
 
 // send challenge nonce
-pub fn send_challenge_nonce() -> Result<[u8; NONCE_SIZE], AuthError> {
+pub fn gen_challenge_nonce() -> Result<[u8; NONCE_SIZE], AuthError> {
     let mut rng = SecureRng::new().map_err(|_| AuthError::RngFailed)?;
     rng.random_array().map_err(|_| AuthError::RngFailed)
 }

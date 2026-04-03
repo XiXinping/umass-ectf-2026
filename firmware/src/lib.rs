@@ -14,6 +14,9 @@ pub mod permission;
 pub mod random;
 pub mod secrets;
 pub mod secure_filesystem;
+pub mod serialization;
+// pub mod serde_signature;
+// pub mod serde_x25519_pubkey;
 
 #[cfg(test)]
 #[panic_handler]

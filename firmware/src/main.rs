@@ -57,6 +57,10 @@ fn main() -> ! {
     let pin_attempt = "abcdef";
     verify_pin(pin_attempt.as_bytes(), &PIN_SALT, &PIN_HASH);
 
+    println!(
+        "Size of Protected File: {}",
+        size_of::<ectf_2026::secure_filesystem::ProtectedFile>()
+    );
     let mut buf = [0u8; MAX_MSG_SIZE];
     loop {
         info!("ooga booga");
