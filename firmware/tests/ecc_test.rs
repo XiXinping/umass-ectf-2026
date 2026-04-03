@@ -143,7 +143,7 @@ use elliptic_curve::generic_array::GenericArray;
         let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, &encrypted.auth_tag, &fail_priv_key);
          
         assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
+            matches!(decrypted, Err(crypto::CryptoError::AsymmetricKeyError)),
             "Expected AesGcmDecryptError, but got {:?}", decrypted
         );
 
@@ -184,7 +184,7 @@ use elliptic_curve::generic_array::GenericArray;
         let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &fail_pub_key, &encrypted.auth_tag, &priv_key);
          
         assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
+            matches!(decrypted, Err(crypto::CryptoError::AsymmetricKeyError)),
             "Expected AesGcmDecryptError, but got {:?}", decrypted
         );
 
@@ -225,7 +225,7 @@ use elliptic_curve::generic_array::GenericArray;
         let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &fail_pub_key, &encrypted.auth_tag, &fail_priv_key);
          
         assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
+            matches!(decrypted, Err(crypto::CryptoError::AsymmetricKeyError)),
             "Expected AesGcmDecryptError, but got {:?}", decrypted
         );
 
