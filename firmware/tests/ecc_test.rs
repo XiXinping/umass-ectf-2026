@@ -6,6 +6,7 @@
  mod ecc_test {
 use ectf_2026::random::SecureRng;
 use ectf_2026::filesystem::MAX_CONTENTS_SIZE;
+use elliptic_curve::generic_array::GenericArray;
 
 
       use core::module_path;
@@ -35,10 +36,10 @@ use ectf_2026::filesystem::MAX_CONTENTS_SIZE;
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::HybridEncrypted = crypto::assymetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
         
-         let decrypted = crypto::assymetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key).expect("Decryption failed");
+         let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key).expect("Decryption failed");
          
          assert_eq!(decrypted, i_have_a_dream.as_bytes());
 
@@ -62,15 +63,16 @@ use ectf_2026::filesystem::MAX_CONTENTS_SIZE;
                 .expect("Buffer overflow: ensure MAX_CONTENTS_SIZE is at least 8192");
         }
 
-         let encrypted: crypto::HybridEncrypted = crypto::assymetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
         
-         let decrypted = crypto::assymetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key).expect("Decryption failed");
+         let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key).expect("Decryption failed");
          
          assert_eq!(decrypted, plaintext_vec);
 
      }
 
+    #[test]
      fn test_ecc_auth_tag_fail() {
          let mut rng = SecureRng::new().expect("Failed to create RNG");
 
@@ -89,7 +91,7 @@ use ectf_2026::filesystem::MAX_CONTENTS_SIZE;
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::HybridEncrypted = crypto::assymetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
          let mut auth_tag_bytes = [0u8; 16];
@@ -98,16 +100,17 @@ use ectf_2026::filesystem::MAX_CONTENTS_SIZE;
             auth_tag_bytes[i] = i as u8;
         }
         
-        let decrypted = crypto::assymetric_decrypt(&encrypted.ciphertext, &nonce_bytes, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
+        let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, GenericArray::from_slice(&auth_tag_bytes), &priv_key);
          
         assert!(
-            matches!(result, Err(crypto::CryptoError::AesGcmDecryptError)),
-            "Expected AesGcmDecryptError, but got {:?}", result
+            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
+            "Expected AesGcmDecryptError, but got {:?}", decrypted
         );
 
 
      }
-
+     
+     #[test]
      fn test_ecc_priv_key_fail() {
          let mut rng = SecureRng::new().expect("Failed to create RNG");
 
@@ -126,7 +129,7 @@ use ectf_2026::filesystem::MAX_CONTENTS_SIZE;
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::HybridEncrypted = crypto::assymetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
          let mut auth_tag_bytes = [0u8; 16];
@@ -137,16 +140,16 @@ use ectf_2026::filesystem::MAX_CONTENTS_SIZE;
 
         let fail_priv_key: StaticSecret = StaticSecret::random_from_rng(&mut rng);
         
-        let decrypted = crypto::assymetric_decrypt(&encrypted.ciphertext, &nonce_bytes, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
+        let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, &encrypted.auth_tag, &fail_priv_key);
          
         assert!(
-            matches!(result, Err(crypto::CryptoError::AesGcmDecryptError)),
-            "Expected AesGcmDecryptError, but got {:?}", result
+            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
+            "Expected AesGcmDecryptError, but got {:?}", decrypted
         );
 
 
      }
-
+    #[test]
     fn test_ecc_pub_key_fail() {
          let mut rng = SecureRng::new().expect("Failed to create RNG");
 
@@ -165,7 +168,7 @@ use ectf_2026::filesystem::MAX_CONTENTS_SIZE;
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::HybridEncrypted = crypto::assymetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
          let mut auth_tag_bytes = [0u8; 16];
@@ -176,18 +179,18 @@ use ectf_2026::filesystem::MAX_CONTENTS_SIZE;
 
         let fail_priv_key: StaticSecret = StaticSecret::random_from_rng(&mut rng);
 
-        let fail_pub_key = PublicKey::from(&priv_key);
+        let fail_pub_key = PublicKey::from(&fail_priv_key);
         
-        let decrypted = crypto::assymetric_decrypt(&encrypted.ciphertext, &nonce_bytes, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
+        let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &fail_pub_key, &encrypted.auth_tag, &priv_key);
          
         assert!(
-            matches!(result, Err(crypto::CryptoError::AesGcmDecryptError)),
-            "Expected AesGcmDecryptError, but got {:?}", result
+            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
+            "Expected AesGcmDecryptError, but got {:?}", decrypted
         );
 
 
      }
-
+    #[test]
     fn test_ecc_both_key_fail() {
          let mut rng = SecureRng::new().expect("Failed to create RNG");
 
@@ -206,7 +209,7 @@ use ectf_2026::filesystem::MAX_CONTENTS_SIZE;
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::HybridEncrypted = crypto::assymetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
          let mut auth_tag_bytes = [0u8; 16];
@@ -219,16 +222,16 @@ use ectf_2026::filesystem::MAX_CONTENTS_SIZE;
 
         let fail_pub_key = PublicKey::from(&priv_key);
         
-        let decrypted = crypto::assymetric_decrypt(&encrypted.ciphertext, &nonce_bytes, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
+        let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &fail_pub_key, &encrypted.auth_tag, &fail_priv_key);
          
         assert!(
-            matches!(result, Err(crypto::CryptoError::AesGcmDecryptError)),
-            "Expected AesGcmDecryptError, but got {:?}", result
+            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
+            "Expected AesGcmDecryptError, but got {:?}", decrypted
         );
 
 
      }
-
+    #[test]
     fn test_ecc_nonce_fail() {
          let mut rng = SecureRng::new().expect("Failed to create RNG");
 
@@ -247,24 +250,24 @@ use ectf_2026::filesystem::MAX_CONTENTS_SIZE;
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::HybridEncrypted = crypto::assymetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
-         let mut nonce_bytes = [0u8; 16];
+         let mut nonce_bytes = [0u8; 12];
 
-         for i in 0..16 {
+         for i in 0..12 {
             nonce_bytes[i] = i as u8;
         }
         
-         let decrypted = crypto::assymetric_decrypt(&encrypted.ciphertext, &nonce_bytes, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
+         let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &nonce_bytes, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
          
         assert!(
-            matches!(result, Err(crypto::CryptoError::AesGcmDecryptError)),
-            "Expected AesGcmDecryptError, but got {:?}", result
+            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
+            "Expected AesGcmDecryptError, but got {:?}", decrypted
         );
 
      }
-
+    #[test]
     fn ecc_test_fail_ciphertext() {
          let mut rng = SecureRng::new().expect("Failed to create RNG");
 
@@ -283,20 +286,15 @@ use ectf_2026::filesystem::MAX_CONTENTS_SIZE;
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::HybridEncrypted = crypto::assymetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
-         let mut nonce_bytes = [0u8; 16];
-
-         for i in 0..16 {
-            nonce_bytes[i] = i as u8;
-        }
         
-        let decrypted = crypto::assymetric_decrypt(&plaintext, &nonce_bytes, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
+        let decrypted = crypto::asymmetric_decrypt(&plaintext_vec, &encrypted.nonce, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
          
         assert!(
-            matches!(result, Err(crypto::CryptoError::AesGcmDecryptError)),
-            "Expected AesGcmDecryptError, but got {:?}", result
+            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
+            "Expected AesGcmDecryptError, but got {:?}", decrypted
         );
 
      }
