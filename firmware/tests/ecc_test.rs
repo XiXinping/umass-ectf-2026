@@ -31,12 +31,12 @@ use elliptic_curve::generic_array::GenericArray;
              signed the Emancipation Proclamation";
          let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-         let mut plaintext_vec = heapless::Vec::<u8, MAX_CONTENTS_SIZE>::new();
+         let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
 
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted::<256> = crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
         
          let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key).expect("Decryption failed");
@@ -56,14 +56,14 @@ use elliptic_curve::generic_array::GenericArray;
          let base_string: &str = "0123456789abcdef0123456789abcdef"; // Exactly 32 bytes
          let base_bytes = base_string.as_bytes();
 
-        let mut plaintext_vec = heapless::Vec::<u8, MAX_CONTENTS_SIZE>::new();
+        let mut plaintext_vec = heapless::Vec::<u8, 8192>::new();
 
         for _ in 0..256 {
             plaintext_vec.extend_from_slice(base_bytes)
                 .expect("Buffer overflow: ensure MAX_CONTENTS_SIZE is at least 8192");
         }
 
-         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted::<8192> = crypto::asymmetric_encrypt::<8192>(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
         
          let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key).expect("Decryption failed");
@@ -86,12 +86,12 @@ use elliptic_curve::generic_array::GenericArray;
              signed the Emancipation Proclamation";
          let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-         let mut plaintext_vec = heapless::Vec::<u8, MAX_CONTENTS_SIZE>::new();
+         let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
 
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted::<256> = crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
          let mut auth_tag_bytes = [0u8; 16];
@@ -100,7 +100,7 @@ use elliptic_curve::generic_array::GenericArray;
             auth_tag_bytes[i] = i as u8;
         }
         
-        let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, GenericArray::from_slice(&auth_tag_bytes), &priv_key);
+        let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, &auth_tag_bytes, &priv_key);
          
         assert!(
             matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
@@ -124,12 +124,12 @@ use elliptic_curve::generic_array::GenericArray;
              signed the Emancipation Proclamation";
          let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-         let mut plaintext_vec = heapless::Vec::<u8, MAX_CONTENTS_SIZE>::new();
+         let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
 
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted::<256> = crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
          let mut auth_tag_bytes = [0u8; 16];
@@ -163,12 +163,12 @@ use elliptic_curve::generic_array::GenericArray;
              signed the Emancipation Proclamation";
          let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-         let mut plaintext_vec = heapless::Vec::<u8, MAX_CONTENTS_SIZE>::new();
+         let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
 
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted::<256> = crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
          let mut auth_tag_bytes = [0u8; 16];
@@ -204,12 +204,12 @@ use elliptic_curve::generic_array::GenericArray;
              signed the Emancipation Proclamation";
          let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-         let mut plaintext_vec = heapless::Vec::<u8, MAX_CONTENTS_SIZE>::new();
+         let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
 
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted::<256> = crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
          let mut auth_tag_bytes = [0u8; 16];
@@ -245,12 +245,12 @@ use elliptic_curve::generic_array::GenericArray;
              signed the Emancipation Proclamation";
          let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-         let mut plaintext_vec = heapless::Vec::<u8, MAX_CONTENTS_SIZE>::new();
+         let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
 
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted::<256> = crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
          let mut nonce_bytes = [0u8; 12];
@@ -281,12 +281,12 @@ use elliptic_curve::generic_array::GenericArray;
              signed the Emancipation Proclamation";
          let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-         let mut plaintext_vec = heapless::Vec::<u8, MAX_CONTENTS_SIZE>::new();
+         let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
 
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::AsymmetricEncrypted = crypto::asymmetric_encrypt(&plaintext_vec, &pub_key)
+         let encrypted: crypto::AsymmetricEncrypted::<256> = crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
         
