@@ -11,13 +11,14 @@ ARG DEBIAN_FRONTEND=noninteractive
 WORKDIR /root
 
 # Install Requisite Packages
-# do this first because it takes the longest
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     python3 \
     make \
     wget \
+    curl \
     build-essential \
     python3-cryptography \
+    binutils-arm-none-eabi \
     unzip
 
 ENV MSPM0_SDK_INSTALL_DIR=/opt/mspm0-sdk-mspm0_sdk_2_06_00_05
@@ -40,7 +41,11 @@ RUN if [ $(uname -m) = "x86_64" ]; then \
     ./ti_cgt_armllvm_4.0.3.LTS_linux_installer.bin --mode unattended --prefix /opt && \
     rm -f ti_cgt_armllvm_4.0.3.LTS_linux_installer.bin
 
+# Install Rust and the thumbv6m-none-eabi target
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN rustup target add thumbv6m-none-eabi
+
 WORKDIR /hsm
 
 ENTRYPOINT ["bash", "/hsm/build.sh"]
-
