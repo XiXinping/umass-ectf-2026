@@ -4,9 +4,7 @@
 use defmt::*;
 use ectf_2026::authentication::verify_pin;
 use ectf_2026::command;
-use ectf_2026::crypto::AsymmetricEncrypted;
-use ectf_2026::crypto::asymmetric_decrypt;
-use ectf_2026::crypto::asymmetric_encrypt;
+use ectf_2026::command::TRANSFER_PAYLOAD_SIZE;
 use ectf_2026::flash::HwFlash;
 use ectf_2026::host::HostUart;
 use ectf_2026::random::SecureRng;
@@ -35,7 +33,7 @@ unsafe fn set_vtor(addr: u32) {
 }
 
 /// Maximum message buffer size (matches sizeof(write_command_t) in C)
-const MAX_MSG_SIZE: usize = 8268;
+const MAX_MSG_SIZE: usize = TRANSFER_PAYLOAD_SIZE;
 
 #[cortex_m_rt::entry]
 fn main() -> ! {

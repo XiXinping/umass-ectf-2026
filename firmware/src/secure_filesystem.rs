@@ -1,30 +1,21 @@
 // Secure Filesystem Implementation
 // provides a secure interface for file operations
 
-use crate::{
-    crypto::{asymmetric_decrypt_in_place, asymmetric_encrypt_in_place},
-    serialization::{serde_signature, serde_uuid, serde_x25519_pubkey},
+use crate::crypto::{
+    NONCE_SIZE, asymmetric_decrypt_in_place, asymmetric_encrypt_in_place, ecc_sign_file_digest,
+    ecc_verify_file_digest,
 };
-use bytemuck::{AnyBitPattern, Pod, Zeroable};
-use core::{mem, ptr};
+use crate::permission::{self, PermissionType, get_public_key};
+
+use core::mem;
 use defmt::info;
 use embassy_time::Instant;
-use heapless::Vec;
 use hmac::{Hmac, Mac};
 use p256::ecdsa::Signature;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use uuid::Uuid;
 use x25519_dalek::{PublicKey, StaticSecret};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, transmute};
-
-use crate::{
-    crypto::{
-        asymmetric_decrypt_in_place, asymmetric_encrypt_in_place, ecc_sign_file_digest,
-        ecc_verify_file_digest,
-    },
-    permission::{self, PermissionType, get_public_key},
-};
 
 // ─── Constants (must match C functional spec) ───────────────────────
 pub const MAX_FILE_COUNT: usize = 8;
@@ -34,9 +25,6 @@ pub const MAX_SERIALIZED_FILE: usize = MAX_CONTENTS_SIZE + 512;
 pub const UUID_SIZE: usize = 16;
 
 // protected file structure constants
-pub const NONCE_SIZE: usize = 12; // AES-GCM nonce size
-pub const AUTH_TAG_SIZE: usize = 16; // AES-GCM tag size
-pub const SIGNATURE_SIZE: usize = 32; // Ed25519 signature size
 
 /// FAT location is fixed by the eCTF functional spec — do NOT change.
 const FLASH_FAT_START: u32 = 0x0003_a000;
@@ -126,7 +114,7 @@ impl FatEntry {
 impl Default for FatEntry {
     fn default() -> Self {
         Self {
-            uuid: Uuid::nil(),
+            uuid: [0; 16],
             length: 0,
             padding: 0,
             flash_addr: 0,
@@ -156,6 +144,9 @@ pub struct ProtectedFile {
     // The plaintext may be shorter than the ciphertext
     pub plaintext_len: usize,
     pub ciphertext: [u8; MAX_CONTENTS_SIZE],
+    // The padding brings the size of ProtectedFile to a multiple of the AES block cipher so it can
+    // easily be encrpyted and decrypted in place.
+    _padding: [u8; 10],
 }
 
 #[repr(packed)]
@@ -261,11 +252,12 @@ impl ProtectedFile {
         // Encrypt the contents of the file
         let mut ciphertext = [0; MAX_CONTENTS_SIZE];
         ciphertext.copy_from_slice(contents);
-        let encrypted = asymmetric_encrypt_in_place::<MAX_CONTENTS_SIZE>(
-            &mut ciphertext,
-            &PublicKey::from(group_read_public_key),
-        )
-        .map_err(|_| FileError::EncryptError)?;
+        let (nonce, auth_tag, cipher_public_key) =
+            asymmetric_encrypt_in_place::<MAX_CONTENTS_SIZE>(
+                &mut ciphertext,
+                &PublicKey::from(group_read_public_key),
+            )
+            .map_err(|_| FileError::EncryptError)?;
 
         let digest = Self::digest(group_id, uuid, name, &ciphertext);
         let signature = ecc_sign_file_digest(&digest, &write_key_bytes)
@@ -276,12 +268,13 @@ impl ProtectedFile {
             group_id,
             uuid,
             name: *name,
-            nonce: encrypted.nonce,
-            auth_tag: encrypted.auth_tag,
+            nonce,
+            auth_tag,
             signature: signature.to_bytes().into(),
-            ciphertext_public_key: encrypted.cipher_public_key.to_bytes(),
+            ciphertext_public_key: cipher_public_key.to_bytes(),
             ciphertext,
             plaintext_len: contents.len(),
+            _padding: [0; 10],
         })
     }
 

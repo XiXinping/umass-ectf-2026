@@ -2,19 +2,23 @@
 
 use heapless::{Vec, format};
 use x25519_dalek::{PublicKey, StaticSecret};
+use zerocopy::transmute;
 
 use crate::authentication::{PIN_LENGTH, SecurityStatus, verify_pin};
-use crate::crypto::{AsymmetricEncrypted, CryptoError, MAX_PLAINTEXT_SIZE, asymmetric_decrypt};
+use crate::crypto::{
+    AUTH_TAG_SIZE, CryptoError, NONCE_SIZE, PUBLIC_KEY_SIZE, asymmetric_decrypt_in_place,
+    asymmetric_encrypt_in_place,
+};
 use crate::host::{HostUart, MsgType};
 use crate::permission::{PermissionType, get_private_key, get_public_key, has_permission};
 use crate::secrets::{PERMISSIONS, PIN_HASH, PIN_SALT};
 use crate::secure_filesystem::{
     self, FILE_IN_USE, FileError, FileMetadata, Filesystem, Flash, FsError, MAX_CONTENTS_SIZE,
-    MAX_FILE_COUNT, MAX_NAME_SIZE, MAX_SERIALIZED_FILE, ProtectedFile, UUID_SIZE,
+    MAX_FILE_COUNT, MAX_NAME_SIZE, ProtectedFile, UUID_SIZE,
 };
 
-const ENCRYPTED_RECEIVE_SIZE: usize = size_of::<AsymmetricEncrypted<MAX_PLAINTEXT_SIZE>>() + 2;
-const MAX_SERIALIZED_ENCRYPTED: usize = MAX_PLAINTEXT_SIZE + 128;
+pub const TRANSFER_PAYLOAD_SIZE: usize =
+    size_of::<ProtectedFile>() + NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE;
 
 /// Dispatch a received command to the appropriate handler.
 #[inline(never)]
@@ -479,18 +483,28 @@ fn cmd_receive(
         return;
     }
 
-    if recv_len < ENCRYPTED_RECEIVE_SIZE as u16 {
+    if recv_len < TRANSFER_PAYLOAD_SIZE as u16 {
         host.print_error("Received file is incorrect size");
         return;
     }
 
-    let payload_size = u16::from_le_bytes([buf[0], buf[1]]);
-    let buf = &buf[2..];
+    // Extract the nonce, authentication tag, public key, and ciphertext from the payload
+    let nonce = &buf[..NONCE_SIZE].try_into().unwrap();
+    let auth_tag = &buf[NONCE_SIZE..NONCE_SIZE + AUTH_TAG_SIZE]
+        .try_into()
+        .unwrap();
+    let ciphertext_public_key = PublicKey::from(
+        <[u8; 32]>::try_from(
+            &buf[NONCE_SIZE + AUTH_TAG_SIZE..NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE],
+        )
+        .unwrap(),
+    );
 
-    if payload_size as usize != buf.len() {
-        host.print_error("Received file is incorrect size");
-        return;
-    }
+    let mut ciphertext: [u8; size_of::<ProtectedFile>()] = buf
+        [NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE..TRANSFER_PAYLOAD_SIZE]
+        .try_into()
+        .unwrap();
+
     // if buf.len() != size_of::<AsymmetricEncrypted<MAX_PLAINTEXT_SIZE>>() {
     //     host.print_error("Received file is incorrect size");
     //     return;
@@ -501,29 +515,21 @@ fn cmd_receive(
     // }
     // let encrypted = unsafe { out.assume_init() };
     //
-    let encrypted: AsymmetricEncrypted<MAX_PLAINTEXT_SIZE> =
-        match postcard::from_bytes(&buf[..payload_size as usize]) {
-            Ok(e) => e,
-            Err(_) => {
-                host.print_error("Failed to deserialize encrypted payload!");
-                return;
-            }
-        };
 
-    let mut file_bytes: Option<Vec<u8, MAX_PLAINTEXT_SIZE>> = None;
+    let mut successful = false;
     for group in PERMISSIONS {
         let receive_key = match get_private_key(group.group_id, PermissionType::Receive) {
             Some(receive_key) => receive_key,
             None => continue,
         };
-        file_bytes = match asymmetric_decrypt(
-            &encrypted.ciphertext,
-            &encrypted.nonce,
-            &encrypted.cipher_public_key,
-            &encrypted.auth_tag,
+        match asymmetric_decrypt_in_place(
+            &mut ciphertext,
+            nonce,
+            &ciphertext_public_key,
+            auth_tag,
             &StaticSecret::from(receive_key),
         ) {
-            Ok(bytes) => Some(bytes),
+            Ok(()) => successful = true,
             Err(CryptoError::AesGcmEncryptError) => {
                 continue;
             }
@@ -533,20 +539,12 @@ fn cmd_receive(
             }
         };
     }
-    let file_bytes = if let Some(bytes) = file_bytes {
-        bytes
-    } else {
+    if !successful {
         host.print_error("HSM does not have permission to receive file!");
         return;
     };
 
-    let file: ProtectedFile = match postcard::from_bytes(&file_bytes) {
-        Ok(f) => f,
-        Err(_) => {
-            host.print_error("Failed to deserialize received file!");
-            return;
-        }
-    };
+    let file: ProtectedFile = transmute!(ciphertext);
 
     // Add signature check
     if file.verify_signature().is_err() {
@@ -728,25 +726,13 @@ fn cmd_listen(
                     return;
                 };
 
-            let mut file_buf = [0u8; MAX_SERIALIZED_FILE];
-            let file_bytes = match postcard::to_slice(&file, &mut file_buf) {
-                Ok(bytes) => bytes,
-                Err(_) => {
-                    host.print_error("Unable to serialize files");
-                    return;
-                }
-            };
-            let file_vec: Vec<u8, MAX_PLAINTEXT_SIZE> = match Vec::from_slice(file_bytes) {
-                Ok(v) => v,
-                Err(_) => {
-                    host.print_error("Serialized file too large for encryption!");
-                    return;
-                }
-            };
-
-            // Encrypt the raw file bytes
-            let encrypted = match asymmetric_encrypt(&file_vec, &receive_public_key) {
-                Ok(encrypted) => encrypted,
+            let mut file_buf: [u8; size_of::<ProtectedFile>()] = transmute!(file);
+            let (nonce, auth_tag, cipher_public_key) = match asymmetric_encrypt_in_place::<
+                { size_of::<ProtectedFile>() },
+            >(
+                &mut file_buf, &receive_public_key
+            ) {
+                Ok(metadata) => metadata,
                 Err(_) => {
                     host.print_error("Failed to encrypt file!");
                     return;
@@ -755,17 +741,10 @@ fn cmd_listen(
 
             // Convert the result of the encryption into a Vec of raw bytes
 
-            let mut send_buf = [0u8; MAX_SERIALIZED_ENCRYPTED + 2];
-            let enc_bytes = match postcard::to_slice(&encrypted, &mut send_buf[2..]) {
-                Ok(bytes) => bytes,
-                Err(_) => {
-                    host.print_error("Failed to serialize encrypted file!");
-                    return;
-                }
-            };
-            let enc_len = enc_bytes.len();
-            send_buf[..2].copy_from_slice(&(enc_len as u16).to_le_bytes());
-            uart1.write_packet(MsgType::Receive, &send_buf[..2 + enc_len]);
+            uart1.write_packet_chunks(
+                MsgType::Receive,
+                &[&nonce, &auth_tag, &cipher_public_key.to_bytes(), &file_buf],
+            );
         }
         _ => {
             host.print_error("Listen: bad message type from neighbor");

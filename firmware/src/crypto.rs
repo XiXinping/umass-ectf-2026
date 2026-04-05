@@ -1,8 +1,5 @@
+use crate::random::SecureRng;
 use crate::serialization::serde_x25519_pubkey;
-use crate::{
-    challenge_response::{AuthError, PRIVATE_KEY_SIZE},
-    random::SecureRng,
-};
 use aes_gcm::{
     Aes256Gcm, Key, Nonce,
     aead::{AeadInPlace, KeyInit},
@@ -20,9 +17,16 @@ use p256::ecdsa::{
     signature::{Signer, Verifier},
 };
 
-// The size of ProtectedFile rounded to the nearest multiple of the 256 (the AES block size).
-pub const MAX_PLAINTEXT_SIZE: usize = 8448;
-pub const GCM_TAG_SIZE: usize = 16;
+/// The AES-256 block size.
+pub const AES_BLOCK_SIZE: usize = 32;
+/// The size of an AES-GCM nonce.
+pub const NONCE_SIZE: usize = 12;
+/// The size of an AES-GCM authentication tag.
+pub const AUTH_TAG_SIZE: usize = 16;
+pub const PUBLIC_KEY_SIZE: usize = size_of::<PublicKey>();
+pub const PRIVATE_KEY_SIZE: usize = 32;
+/// The size of an ED25519 signature
+pub const SIGNATURE_SIZE: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
 pub enum CryptoError {
@@ -41,6 +45,20 @@ pub enum CryptoError {
     /// Failed to decrypt using AES-GCM
     AesGcmDecryptError,
 }
+/// Error types for authentication operations
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthError {
+    /// Random number generation failed.
+    RngFailed,
+    /// Could not import a key from raw bytes.
+    KeyImportFailed,
+    /// ECDSA signing failed.
+    SigningFailed,
+    /// ECDSA verification failed (bad signature or wrong key).
+    VerificationFailed,
+    /// Signature bytes could not be parsed.
+    BadSignatureFormat,
+}
 
 /// A struct containing the result of calling assymetric_encrypt(). The result of a hybrid
 /// encryption contains the ciphertext, the AES shared secret, and an AES-GCM authentication tag.
@@ -50,7 +68,7 @@ pub struct AsymmetricEncrypted<const N: usize> {
     pub nonce: [u8; 12],
     // #[serde(with = "serde_x25519_pubkey")]
     pub cipher_public_key: PublicKey,
-    pub auth_tag: [u8; GCM_TAG_SIZE],
+    pub auth_tag: [u8; AUTH_TAG_SIZE],
 }
 
 #[derive(Serialize, Deserialize)]
@@ -58,7 +76,7 @@ pub struct AsymmetricEncryptedMetadata {
     pub nonce: [u8; 12],
     #[serde(with = "serde_x25519_pubkey")]
     pub cipher_public_key: PublicKey,
-    pub auth_tag: [u8; GCM_TAG_SIZE],
+    pub auth_tag: [u8; AUTH_TAG_SIZE],
 }
 
 pub fn aes_gcm_encrypt<const N: usize>(
@@ -66,7 +84,7 @@ pub fn aes_gcm_encrypt<const N: usize>(
     key: &[u8; 32],
     iv: &[u8; 12],
     associated_data: &[u8],
-) -> Result<(Vec<u8, N>, [u8; GCM_TAG_SIZE]), aes_gcm::Error> {
+) -> Result<(Vec<u8, N>, [u8; AUTH_TAG_SIZE]), aes_gcm::Error> {
     let key = Key::<Aes256Gcm>::from_slice(key);
     let nonce = Nonce::from_slice(iv);
     let cipher = Aes256Gcm::new(key);
@@ -87,7 +105,7 @@ pub fn aes_gcm_encrypt_in_place(
     key: &[u8; 32],
     iv: &[u8; 12],
     associated_data: &[u8],
-) -> Result<[u8; GCM_TAG_SIZE], aes_gcm::Error> {
+) -> Result<[u8; AUTH_TAG_SIZE], aes_gcm::Error> {
     let key = Key::<Aes256Gcm>::from_slice(key);
     let nonce = Nonce::from_slice(iv);
     let cipher = Aes256Gcm::new(key);
@@ -101,7 +119,7 @@ pub fn aes_gcm_decrypt<const N: usize>(
     ciphertext: &[u8],
     key: &[u8; 32],
     iv: &[u8; 12],
-    auth_tag: &[u8; GCM_TAG_SIZE],
+    auth_tag: &[u8; AUTH_TAG_SIZE],
     associated_data: &[u8],
 ) -> Result<Vec<u8, N>, aes_gcm::Error> {
     let key = Key::<Aes256Gcm>::from_slice(key);
@@ -123,7 +141,7 @@ pub fn aes_gcm_decrypt_in_place(
     ciphertext: &mut [u8],
     key: &[u8; 32],
     iv: &[u8; 12],
-    auth_tag: &[u8; GCM_TAG_SIZE],
+    auth_tag: &[u8; AUTH_TAG_SIZE],
     associated_data: &[u8],
 ) -> Result<(), aes_gcm::Error> {
     let key = Key::<Aes256Gcm>::from_slice(key);
@@ -170,7 +188,7 @@ pub fn aes_gcm_decrypt_in_place(
 pub fn asymmetric_encrypt_in_place<const N: usize>(
     plaintext: &mut [u8],
     public_key: &PublicKey,
-) -> Result<AsymmetricEncryptedMetadata, CryptoError> {
+) -> Result<([u8; NONCE_SIZE], [u8; AUTH_TAG_SIZE], PublicKey), CryptoError> {
     // Can just generate 32 bytes using random_bytes() and use that as the ephemeral secret
     let mut rng = SecureRng::new().map_err(|_| CryptoError::RngError)?;
     let ephemeral_secret = EphemeralSecret::random_from_rng(&mut rng);
@@ -188,11 +206,7 @@ pub fn asymmetric_encrypt_in_place<const N: usize>(
 
     let auth_tag = aes_gcm_encrypt_in_place(plaintext, &aes_key, &nonce, &[])
         .map_err(|_| CryptoError::AesGcmEncryptError)?;
-    Ok(AsymmetricEncryptedMetadata {
-        nonce,
-        cipher_public_key,
-        auth_tag,
-    })
+    Ok((nonce, auth_tag, cipher_public_key))
 }
 
 /// Decrypts the contents of a file encrypted with assymetric cryptography. Uses the ciphertext
@@ -202,7 +216,7 @@ pub fn asymmetric_decrypt<const N: usize>(
     ciphertext: &Vec<u8, N>,
     nonce: &[u8; 12],
     cipher_public_key: &PublicKey,
-    auth_tag: &[u8; GCM_TAG_SIZE],
+    auth_tag: &[u8; AUTH_TAG_SIZE],
     private_key: &StaticSecret,
 ) -> Result<Vec<u8, N>, CryptoError> {
     let shared_secret = private_key.diffie_hellman(cipher_public_key);
@@ -222,7 +236,7 @@ pub fn asymmetric_decrypt_in_place(
     ciphertext: &mut [u8],
     nonce: &[u8; 12],
     cipher_public_key: &PublicKey,
-    auth_tag: &[u8; GCM_TAG_SIZE],
+    auth_tag: &[u8; AUTH_TAG_SIZE],
     private_key: &StaticSecret,
 ) -> Result<(), CryptoError> {
     let shared_secret = private_key.diffie_hellman(cipher_public_key);
