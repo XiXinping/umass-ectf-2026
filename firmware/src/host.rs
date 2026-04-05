@@ -136,15 +136,35 @@ impl<'d> HostUart<'d> {
     }
 
     /// Write raw bytes to UART, expecting ACK every 256 bytes if `should_ack`.
-    fn write_bytes_raw(&mut self, buf: &[u8], len: u16, should_ack: bool) -> MsgStatus {
-        for i in 0..len as usize {
-            if i % 256 == 0 && i != 0 {
-                if should_ack && self.read_ack() != MsgStatus::Ok {
-                    return MsgStatus::NoAck;
+    pub fn write_bytes_raw(
+        &mut self,
+        chunks: &[&[u8]],
+        total_len: u16,
+        should_ack: bool,
+    ) -> MsgStatus {
+        let mut bytes_written: usize = 0;
+        let limit = total_len as usize;
+
+        // Iterate over the slices seamlessly
+        for chunk in chunks.iter() {
+            for &byte in *chunk {
+                // Safety check in case total_len is smaller than the actual chunks provided
+                if bytes_written >= limit {
+                    return MsgStatus::Ok;
                 }
+
+                // Check for ACK every 256 bytes (but not at byte 0)
+                if should_ack && bytes_written > 0 && bytes_written % 256 == 0 {
+                    if self.read_ack() != MsgStatus::Ok {
+                        return MsgStatus::NoAck;
+                    }
+                }
+
+                self.write_byte(byte);
+                bytes_written += 1;
             }
-            self.write_byte(buf[i]);
         }
+
         MsgStatus::Ok
     }
 
@@ -160,19 +180,20 @@ impl<'d> HostUart<'d> {
     /// 2. For non-ACK, non-DEBUG: wait for ACK
     /// 3. Send payload (with ACK every 256 bytes for non-DEBUG)
     /// 4. Wait for final ACK (non-DEBUG)
-    pub fn write_packet(&mut self, msg_type: MsgType, data: &[u8]) -> MsgStatus {
-        let len = data.len() as u16;
+    pub fn write_packet_chunks(&mut self, msg_type: MsgType, data_chunks: &[&[u8]]) -> MsgStatus {
+        // let len = data.len() as u16;
+        let total_len: u16 = data_chunks.iter().map(|c| c.len() as u16).sum();
 
         // Build and send header
         let hdr = MsgHeader {
             magic: MSG_MAGIC,
             cmd: msg_type as u8,
-            len,
+            len: total_len,
         };
         let hdr_bytes = unsafe {
             core::slice::from_raw_parts(&hdr as *const MsgHeader as *const u8, MSG_HEADER_SIZE)
         };
-        let result = self.write_bytes_raw(hdr_bytes, MSG_HEADER_SIZE as u16, false);
+        let result = self.write_bytes_raw(&[hdr_bytes], MSG_HEADER_SIZE as u16, false);
         if result != MsgStatus::Ok {
             return result;
         }
@@ -188,8 +209,8 @@ impl<'d> HostUart<'d> {
         }
 
         // Send payload if present
-        if len > 0 {
-            let result = self.write_bytes_raw(data, len, msg_type != MsgType::Debug);
+        if total_len > 0 {
+            let result = self.write_bytes_raw(data_chunks, total_len, msg_type != MsgType::Debug);
             if result != MsgStatus::Ok {
                 return result;
             }
@@ -200,6 +221,9 @@ impl<'d> HostUart<'d> {
         }
 
         MsgStatus::Ok
+    }
+    pub fn write_packet(&mut self, msg_type: MsgType, data: &[u8]) -> MsgStatus {
+        self.write_packet_chunks(msg_type, &[data])
     }
 
     /// Read a complete packet from UART.
@@ -255,7 +279,7 @@ impl<'d> HostUart<'d> {
         let hdr_bytes = unsafe {
             core::slice::from_raw_parts(&hdr as *const MsgHeader as *const u8, MSG_HEADER_SIZE)
         };
-        let _ = self.write_bytes_raw(hdr_bytes, MSG_HEADER_SIZE as u16, false);
+        let _ = self.write_bytes_raw(&[hdr_bytes], MSG_HEADER_SIZE as u16, false);
 
         if msg_type != MsgType::Debug && self.read_ack() != MsgStatus::Ok {
             return MsgStatus::NoAck;

@@ -1,7 +1,11 @@
 // Secure Filesystem Implementation
 // provides a secure interface for file operations
 
-use crate::serialization::{serde_signature, serde_uuid, serde_x25519_pubkey};
+use crate::{
+    crypto::{asymmetric_decrypt_in_place, asymmetric_encrypt_in_place},
+    serialization::{serde_signature, serde_uuid, serde_x25519_pubkey},
+};
+use bytemuck::{AnyBitPattern, Pod, Zeroable};
 use core::{mem, ptr};
 use defmt::info;
 use embassy_time::Instant;
@@ -12,10 +16,12 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use uuid::Uuid;
 use x25519_dalek::{PublicKey, StaticSecret};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, transmute};
 
 use crate::{
     crypto::{
-        asymmetric_decrypt, asymmetric_encrypt, ecc_sign_file_digest, ecc_verify_file_digest,
+        asymmetric_decrypt_in_place, asymmetric_encrypt_in_place, ecc_sign_file_digest,
+        ecc_verify_file_digest,
     },
     permission::{self, PermissionType, get_public_key},
 };
@@ -103,7 +109,7 @@ pub trait Flash {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct FatEntry {
-    pub uuid: Uuid,
+    pub uuid: [u8; 16],
     pub length: u16,
     pub padding: u16,
     pub flash_addr: u32,
@@ -129,23 +135,38 @@ impl Default for FatEntry {
 }
 
 /// On-flash protected file structure
-#[repr(C)]
-#[derive(PartialEq, Debug, Serialize, Deserialize)]
+#[repr(packed)]
+#[derive(PartialEq, Debug, Immutable, KnownLayout, FromBytes, IntoBytes)]
 pub struct ProtectedFile {
     // Metadata
     pub in_use: u32,
     pub group_id: u16,
     pub name: [u8; MAX_NAME_SIZE],
-    #[serde(with = "serde_uuid")]
-    pub uuid: Uuid,
+    // pub uuid: Uuid,
+    pub uuid: [u8; 16],
     pub nonce: [u8; NONCE_SIZE],
     pub auth_tag: [u8; 16],
-    #[serde(with = "serde_signature")]
-    pub signature: Signature,
-    #[serde(with = "serde_x25519_pubkey")]
-    pub ciphertext_public_key: PublicKey,
-    /// The encrypted contents of the file.
-    pub contents: Vec<u8, MAX_CONTENTS_SIZE>,
+    // pub signature: Signature,
+    pub signature: [u8; 64],
+    // pub ciphertext_public_key: PublicKey,
+    pub ciphertext_public_key: [u8; 32],
+    // The encrypted contents of the file.
+    // pub contents: Vec<u8, MAX_CONTENTS_SIZE>,
+    // pub contents: Contents,
+    // The plaintext may be shorter than the ciphertext
+    pub plaintext_len: usize,
+    pub ciphertext: [u8; MAX_CONTENTS_SIZE],
+}
+
+#[repr(packed)]
+#[derive(PartialEq, Debug, Immutable, KnownLayout, FromBytes, IntoBytes)]
+pub struct UnprotectedFile {
+    pub in_use: u32,
+    pub group_id: u16,
+    pub name: [u8; MAX_NAME_SIZE],
+    pub uuid: [u8; 16],
+    pub plaintext_len: usize,
+    pub plaintext: [u8; MAX_CONTENTS_SIZE],
 }
 
 #[derive(PartialEq, Debug, Serialize, Deserialize)]
@@ -157,44 +178,79 @@ pub struct FileMetadata {
 
 // TO-DO: Add signature check
 impl ProtectedFile {
+    pub fn signature(&self) -> Signature {
+        Signature::from_slice(&self.signature).unwrap()
+    }
+    pub fn ciphertext_public_key(&self) -> PublicKey {
+        PublicKey::from(self.ciphertext_public_key)
+    }
     pub fn verify_signature(&self) -> Result<(), FileError> {
         // Get the write public key for the group ID
         let write_public_key_bytes = get_public_key(self.group_id, PermissionType::Write)
             .ok_or(FileError::InvalidGroupId)?;
 
         // The digest should contain the encrypted contents, group ID, UUID, and filename
-        let mut mac = Hmac::<Sha256>::new_from_slice(self.contents.as_slice()).unwrap();
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.ciphertext).unwrap();
         mac.update(&self.name);
         mac.update(&self.group_id.to_le_bytes());
-        mac.update(self.uuid.as_bytes());
+        mac.update(&self.uuid);
 
         let digest = mac.finalize().into_bytes();
 
-        ecc_verify_file_digest(&self.signature, &digest, &write_public_key_bytes)
+        ecc_verify_file_digest(&self.signature(), &digest, &write_public_key_bytes)
             .map_err(|_| FileError::InvalidSignature)
     }
-    /// Attempt to return the decrypted contents of the file.
-    pub fn decrypt(&self) -> Result<Vec<u8, MAX_CONTENTS_SIZE>, FileError> {
+    // Attempt to return the decrypted contents of the file.
+    // pub fn decrypt(&self) -> Result<Vec<u8, MAX_CONTENTS_SIZE>, FileError> {
+    //     let read_key_bytes = permission::get_private_key(self.group_id, PermissionType::Read)
+    //         .ok_or(FileError::NoReadPermission)?;
+    //
+    //     asymmetric_decrypt(
+    //         &self.contents,
+    //         &self.nonce,
+    //         &self.ciphertext_public_key,
+    //         &self.auth_tag,
+    //         &StaticSecret::from(read_key_bytes),
+    //     )
+    //     .map_err(|_| FileError::DecryptError)
+    // }
+
+    pub fn to_unprotected_file(mut self) -> Result<UnprotectedFile, FileError> {
         let read_key_bytes = permission::get_private_key(self.group_id, PermissionType::Read)
             .ok_or(FileError::NoReadPermission)?;
-
-        asymmetric_decrypt(
-            &self.contents,
-            &self.nonce,
-            &self.ciphertext_public_key,
-            &self.auth_tag,
+        let nonce = self.nonce;
+        let ciphertext_public_key = self.ciphertext_public_key();
+        let auth_tag = self.auth_tag;
+        asymmetric_decrypt_in_place(
+            &mut self.ciphertext,
+            &nonce,
+            &ciphertext_public_key,
+            &auth_tag,
             &StaticSecret::from(read_key_bytes),
         )
-        .map_err(|_| FileError::DecryptError)
+        .map_err(|_| FileError::DecryptError)?;
+        Ok(UnprotectedFile {
+            in_use: self.in_use,
+            group_id: self.group_id,
+            name: self.name,
+            uuid: self.uuid,
+            plaintext_len: self.plaintext_len,
+            plaintext: self.ciphertext,
+        })
     }
 
     // Create a new protected file from plaintext contents
     pub fn create(
         group_id: u16,
-        uuid: Uuid,
+        uuid: [u8; 16],
         name: &[u8; MAX_NAME_SIZE],
-        contents: &Vec<u8, MAX_CONTENTS_SIZE>,
+        contents: &[u8],
     ) -> Result<Self, FileError> {
+        let contents = if contents.len() > MAX_CONTENTS_SIZE {
+            &contents[..MAX_CONTENTS_SIZE]
+        } else {
+            contents
+        };
         let write_key_bytes = permission::get_private_key(group_id, PermissionType::Write)
             .ok_or(FileError::NoWritePermission)?;
 
@@ -203,15 +259,17 @@ impl ProtectedFile {
             .ok_or(FileError::InvalidGroupId)?;
 
         // Encrypt the contents of the file
-        let encrypted = asymmetric_encrypt(contents, &PublicKey::from(group_read_public_key))
-            .map_err(|_| FileError::EncryptError)?;
+        let mut ciphertext = [0; MAX_CONTENTS_SIZE];
+        ciphertext.copy_from_slice(contents);
+        let encrypted = asymmetric_encrypt_in_place::<MAX_CONTENTS_SIZE>(
+            &mut ciphertext,
+            &PublicKey::from(group_read_public_key),
+        )
+        .map_err(|_| FileError::EncryptError)?;
 
-        let digest = Self::digest(group_id, uuid, name, &encrypted.ciphertext);
+        let digest = Self::digest(group_id, uuid, name, &ciphertext);
         let signature = ecc_sign_file_digest(&digest, &write_key_bytes)
             .map_err(|_| FileError::GenSignatureError)?;
-
-        let ciphertext =
-            Vec::from_slice(digest.as_slice()).map_err(|_| FileError::BullshitError)?;
 
         Ok(ProtectedFile {
             in_use: 0,
@@ -220,9 +278,10 @@ impl ProtectedFile {
             name: *name,
             nonce: encrypted.nonce,
             auth_tag: encrypted.auth_tag,
-            signature,
-            ciphertext_public_key: encrypted.cipher_public_key,
-            contents: ciphertext,
+            signature: signature.to_bytes().into(),
+            ciphertext_public_key: encrypted.cipher_public_key.to_bytes(),
+            ciphertext,
+            plaintext_len: contents.len(),
         })
     }
 
@@ -230,12 +289,12 @@ impl ProtectedFile {
     /// UUID, and name.
     pub fn digest(
         group_id: u16,
-        uuid: Uuid,
+        uuid: [u8; 16],
         name: &[u8; MAX_NAME_SIZE],
-        contents: &Vec<u8, MAX_CONTENTS_SIZE>,
+        contents: &[u8],
     ) -> [u8; 32] {
         // The digest should contain the encrypted contents, group ID, UUID, and filename
-        let mut mac = Hmac::<Sha256>::new_from_slice(contents.as_slice()).unwrap();
+        let mut mac = Hmac::<Sha256>::new_from_slice(contents).unwrap();
         mac.update(name);
         mac.update(&group_id.to_le_bytes());
         mac.update(uuid.as_bytes());
@@ -251,6 +310,42 @@ impl ProtectedFile {
         }
     }
 }
+
+// impl UnprotectedFile {
+//     pub fn to_protected_file(mut self) -> Result<ProtectedFile, FileError> {
+//         let read_public_key =
+//             get_public_key(self.group_id, PermissionType::Read).ok_or(FileError::InvalidGroupId)?;
+//
+//         let write_private_key = get_prviate_key()
+//
+//         let encryption_metadata =
+//             asymmetric_encrypt_in_place(&mut self.contents, &PublicKey::from(read_public_key))
+//                 .map_err(|_| FileError::EncryptError)?;
+//
+//         let digest = ProtectedFile::digest(self.group_id, self.uuid, self.name, &self.contents);
+//         let signature = ecc_sign_file_digest(&digest, &write_key_bytes)
+//             .map_err(|_| FileError::GenSignatureError)?;
+//
+//         Ok(ProtectedFile {
+//             in_use: self.in_use,
+//             group_id: self.group_id,
+//             name: self.name,
+//             uuid: self.uuid,
+//             nonce: encryption_metadata.nonce,
+//             auth_tag: encryption_metadata.auth_tag,
+//             ciphertext_public_key: encryption_metadata.cipher_public_key,
+//             signature: encryption_metadata,
+//             contents: self.contents,
+//         })
+//     }
+//     pub fn metadata(&self, slot: u8) -> FileMetadata {
+//         FileMetadata {
+//             slot,
+//             group_id: self.group_id,
+//             name: self.name,
+//         }
+//     }
+// }
 
 // ─── Filesystem state ───────────────────────────────────────────────
 
@@ -319,7 +414,7 @@ impl Filesystem {
         &mut self,
         slot: u8,
         file: &ProtectedFile,
-        uuid: Uuid,
+        uuid: [u8; 16],
         flash: &mut impl Flash,
     ) -> Result<(), FsError> {
         self.write_file_inner(slot, file, uuid, flash, None)
@@ -330,7 +425,7 @@ impl Filesystem {
         &mut self,
         slot: u8,
         file: &ProtectedFile,
-        uuid: Uuid,
+        uuid: [u8; 16],
         flash: &mut impl Flash,
         boot: Instant,
     ) -> Result<(), FsError> {
@@ -341,7 +436,7 @@ impl Filesystem {
         &mut self,
         slot: u8,
         file: &ProtectedFile,
-        uuid: Uuid,
+        uuid: [u8; 16],
         flash: &mut impl Flash,
         boot: Option<Instant>,
     ) -> Result<(), FsError> {
@@ -350,10 +445,7 @@ impl Filesystem {
             info!("[+{} ms] write_file inner start", elapsed_ms(boot));
         }
 
-        let mut buf = [0u8; MAX_SERIALIZED_FILE];
-        let serialized =
-            postcard::to_slice(file, &mut buf).map_err(|_| FsError::FlashWriteError)?;
-        let length = serialized.len() as u16;
+        let length = file.as_bytes().len() as u16;
 
         let flash_addr = FILES_START_ADDR + STORED_FILE_SIZE * (idx as u32);
         // let length = file_total_size(file.contents.len() as u16);
@@ -393,7 +485,7 @@ impl Filesystem {
         //     core::slice::from_raw_parts(file as *const ProtectedFile as *const u8, length as usize)
         // };
         let write_start = Instant::now();
-        flash.write(flash_addr, serialized)?;
+        flash.write(flash_addr, file.as_bytes())?;
         if let Some(boot) = boot {
             info!(
                 "[+{} ms] write_file payload write done (step={} ms)",
@@ -419,13 +511,12 @@ impl Filesystem {
         if len > MAX_SERIALIZED_FILE {
             return Err(FsError::InvalidFatEntry);
         }
-        let mut buf = [0u8; MAX_SERIALIZED_FILE];
+        let mut buf = [0u8; size_of::<ProtectedFile>()];
         // Read from flash into bytes
         flash.read(entry.flash_addr, &mut buf[..len]);
+        let file: ProtectedFile = transmute!(buf);
 
         // Interpret bytes as ProtectedFile
-        let file: ProtectedFile =
-            postcard::from_bytes(&buf[..len]).map_err(|_| FsError::InvalidFatEntry)?;
         // let file = unsafe {
         //     // pointer to bytes as *const ProtectedFile
         //     let p = bytes.as_ptr() as *const ProtectedFile;
@@ -451,7 +542,7 @@ impl Filesystem {
 /// Equivalent to C `FILE_TOTAL_SIZE` but without the macro precedence bug.
 fn file_total_size(contents_len: u16) -> u16 {
     // offset of `contents` in File = in_use(4) + group_id(2) + name(32) + contents_len(2) = 40
-    let metadata_size = mem::offset_of!(ProtectedFile, contents) as u16;
+    let metadata_size = mem::offset_of!(ProtectedFile, ciphertext) as u16;
     metadata_size + contents_len
 }
 

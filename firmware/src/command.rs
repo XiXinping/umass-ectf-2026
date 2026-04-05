@@ -1,21 +1,16 @@
 //! Command dispatch and handlers for the eCTF host protocol.
 
 use heapless::{Vec, format};
-use uuid::Uuid;
 use x25519_dalek::{PublicKey, StaticSecret};
 
 use crate::authentication::{PIN_LENGTH, SecurityStatus, verify_pin};
-use crate::challenge_response::gen_challenge_nonce;
-use crate::crypto::{
-    AsymmetricEncrypted, CryptoError, MAX_PLAINTEXT_SIZE, asymmetric_decrypt, asymmetric_encrypt,
-    ecc_sign_file_digest,
-};
+use crate::crypto::{AsymmetricEncrypted, CryptoError, MAX_PLAINTEXT_SIZE, asymmetric_decrypt};
 use crate::host::{HostUart, MsgType};
 use crate::permission::{PermissionType, get_private_key, get_public_key, has_permission};
 use crate::secrets::{PERMISSIONS, PIN_HASH, PIN_SALT};
 use crate::secure_filesystem::{
     self, FILE_IN_USE, FileError, FileMetadata, Filesystem, Flash, FsError, MAX_CONTENTS_SIZE,
-    MAX_FILE_COUNT, MAX_NAME_SIZE, MAX_SERIALIZED_FILE, NONCE_SIZE, ProtectedFile, UUID_SIZE,
+    MAX_FILE_COUNT, MAX_NAME_SIZE, MAX_SERIALIZED_FILE, ProtectedFile, UUID_SIZE,
 };
 
 const ENCRYPTED_RECEIVE_SIZE: usize = size_of::<AsymmetricEncrypted<MAX_PLAINTEXT_SIZE>>() + 2;
@@ -160,7 +155,7 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
 
     let _pin = &buf[PIN_OFF..PIN_OFF + 6];
     let slot = buf[SLOT_OFF];
-    let uuid = Uuid::from_slice(&buf[UUID_OFF..UUID_OFF + UUID_SIZE]).unwrap();
+    let uuid = &buf[UUID_OFF..UUID_OFF + UUID_SIZE];
     host.print_debug("Read: Parsed slot and UUID\n");
 
     let file = match fs.read_file(slot, flash) {
@@ -246,13 +241,35 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
     // let name = &file_buf[NAME_OFF..NAME_OFF + MAX_NAME_SIZE];
     // let contents = &file_buf[METADATA_SIZE..METADATA_SIZE + contents_len];
     // let file = fs.read_file(flash);
-    let contents = match file.decrypt() {
+    // let contents = match file.decrypt() {
+    //     Ok(contents) => contents,
+    //     Err(FileError::NoReadPermission) => {
+    //         host.print_error(
+    //             &format!(
+    //                 64; "HSM does not have permission to write files from group: {:#x}",
+    //                 file.group_id
+    //             )
+    //             .unwrap(),
+    //         );
+    //         return;
+    //     }
+    //     Err(FileError::DecryptError) => {
+    //         host.print_error("Error while decrypting file!");
+    //         return;
+    //     }
+    //     Err(_) => {
+    //         host.print_error("Something went wrong!");
+    //         return;
+    //     }
+    // };
+    let group_id = file.group_id;
+    let unprotected_file = match file.to_unprotected_file() {
         Ok(contents) => contents,
         Err(FileError::NoReadPermission) => {
             host.print_error(
                 &format!(
                     64; "HSM does not have permission to write files from group: {:#x}",
-                    file.group_id
+                    group_id
                 )
                 .unwrap(),
             );
@@ -267,16 +284,19 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
             return;
         }
     };
+    let plaintext = &unprotected_file.plaintext[..unprotected_file.plaintext_len];
+
     host.print_debug("Read: Contents (hex):");
-    host.print_hex_debug(&contents);
+    host.print_hex_debug(plaintext);
     host.print_debug("Read: Contents debug sent\n");
 
-    let mut resp = [0u8; MAX_NAME_SIZE + MAX_CONTENTS_SIZE];
-    resp[..MAX_NAME_SIZE].copy_from_slice(&file.name);
-    resp[MAX_NAME_SIZE..MAX_NAME_SIZE + contents.len()].copy_from_slice(&contents);
-
-    let resp_len = MAX_NAME_SIZE + contents.len();
-    let _ = host.write_packet(MsgType::Read, &resp[..resp_len]);
+    let _ = host.write_packet_chunks(MsgType::Read, &[&unprotected_file.name, plaintext]);
+    // let mut resp = [0u8; MAX_NAME_SIZE + MAX_CONTENTS_SIZE];
+    // resp[..MAX_NAME_SIZE].copy_from_slice(&file.name);
+    // resp[MAX_NAME_SIZE..MAX_NAME_SIZE + contents.len()].copy_from_slice(&contents);
+    //
+    // let resp_len = MAX_NAME_SIZE + contents.len();
+    // let _ = host.write_packet(MsgType::Read, &resp[..resp_len]);
     host.print_debug("Read: Sent file contents response\n");
 }
 
@@ -334,7 +354,7 @@ fn cmd_write(
         .position(|&b| b == 0)
         .unwrap_or(name_raw.len());
     let name = &name_raw[..name_len].as_array().unwrap();
-    let uuid: Uuid = Uuid::from_slice(&buf[UUID_OFF..UUID_OFF + UUID_SIZE]).unwrap();
+    let uuid: [u8; 16] = buf[UUID_OFF..UUID_OFF + UUID_SIZE].try_into().unwrap();
     let contents_len = u16::from_le_bytes([buf[CLEN_OFF], buf[CLEN_OFF + 1]]) as usize;
 
     // Validate contents_len against actual packet payload

@@ -4,12 +4,18 @@
 use defmt::*;
 use ectf_2026::authentication::verify_pin;
 use ectf_2026::command;
+use ectf_2026::crypto::AsymmetricEncrypted;
+use ectf_2026::crypto::asymmetric_decrypt;
+use ectf_2026::crypto::asymmetric_encrypt;
 use ectf_2026::flash::HwFlash;
 use ectf_2026::host::HostUart;
+use ectf_2026::random::SecureRng;
 use ectf_2026::secrets::PIN_HASH;
 use ectf_2026::secrets::PIN_SALT;
 use ectf_2026::secure_filesystem::Filesystem;
 use embassy_mspm0::uart::{Config, Uart};
+use x25519_dalek::PublicKey;
+use x25519_dalek::StaticSecret;
 
 // use defmt_rtt as _;
 use {defmt_rtt as _, panic_probe as _};
@@ -55,10 +61,6 @@ fn main() -> ! {
     let pin_attempt = "abcdef";
     verify_pin(pin_attempt.as_bytes(), &PIN_SALT, &PIN_HASH);
 
-    println!(
-        "Size of Protected File: {}",
-        size_of::<ectf_2026::secure_filesystem::ProtectedFile>()
-    );
     loop {
         let mut buf = [0u8; MAX_MSG_SIZE];
         match host.read_packet(&mut buf, MAX_MSG_SIZE as u16) {

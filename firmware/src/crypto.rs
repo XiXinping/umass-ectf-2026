@@ -1,11 +1,11 @@
-use crate::serialization::{serde_signature, serde_uuid, serde_x25519_pubkey};
+use crate::serialization::serde_x25519_pubkey;
 use crate::{
     challenge_response::{AuthError, PRIVATE_KEY_SIZE},
     random::SecureRng,
 };
 use aes_gcm::{
     Aes256Gcm, Key, Nonce,
-    aead::{AeadInPlace, KeyInit, heapless::Vec as AesVec},
+    aead::{AeadInPlace, KeyInit},
 };
 use heapless::Vec;
 use hkdf::Hkdf;
@@ -45,9 +45,16 @@ pub enum CryptoError {
 /// A struct containing the result of calling assymetric_encrypt(). The result of a hybrid
 /// encryption contains the ciphertext, the AES shared secret, and an AES-GCM authentication tag.
 #[repr(C)]
-#[derive(Serialize, Deserialize)]
 pub struct AsymmetricEncrypted<const N: usize> {
-    pub ciphertext: Vec<u8, N>,
+    pub ciphertext: [u8; N],
+    pub nonce: [u8; 12],
+    // #[serde(with = "serde_x25519_pubkey")]
+    pub cipher_public_key: PublicKey,
+    pub auth_tag: [u8; GCM_TAG_SIZE],
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AsymmetricEncryptedMetadata {
     pub nonce: [u8; 12],
     #[serde(with = "serde_x25519_pubkey")]
     pub cipher_public_key: PublicKey,
@@ -64,7 +71,7 @@ pub fn aes_gcm_encrypt<const N: usize>(
     let nonce = Nonce::from_slice(iv);
     let cipher = Aes256Gcm::new(key);
 
-    let mut buffer: AesVec<u8, N> = AesVec::new();
+    let mut buffer: Vec<u8, N> = Vec::new();
 
     buffer
         .extend_from_slice(plaintext)
@@ -72,7 +79,22 @@ pub fn aes_gcm_encrypt<const N: usize>(
 
     let auth_tag = cipher.encrypt_in_place_detached(nonce, associated_data, &mut buffer)?;
 
-    Ok((Vec::from_slice(buffer.as_slice()).unwrap(), auth_tag.into()))
+    Ok((buffer, auth_tag.into()))
+}
+
+pub fn aes_gcm_encrypt_in_place(
+    plaintext: &mut [u8],
+    key: &[u8; 32],
+    iv: &[u8; 12],
+    associated_data: &[u8],
+) -> Result<[u8; GCM_TAG_SIZE], aes_gcm::Error> {
+    let key = Key::<Aes256Gcm>::from_slice(key);
+    let nonce = Nonce::from_slice(iv);
+    let cipher = Aes256Gcm::new(key);
+
+    let auth_tag = cipher.encrypt_in_place_detached(nonce, associated_data, plaintext)?;
+
+    Ok(auth_tag.into())
 }
 
 pub fn aes_gcm_decrypt<const N: usize>(
@@ -97,13 +119,58 @@ pub fn aes_gcm_decrypt<const N: usize>(
     Ok(buffer)
 }
 
-/// Encrypts the contents of a file using assymetric cryptography. The output contains the
-/// ciphertext, the shared secret, and an auth tag
-/// Currently initializes a new TRNG instance every call. This may be changed.
-pub fn asymmetric_encrypt<const N: usize>(
-    plaintext: &Vec<u8, N>,
+pub fn aes_gcm_decrypt_in_place(
+    ciphertext: &mut [u8],
+    key: &[u8; 32],
+    iv: &[u8; 12],
+    auth_tag: &[u8; GCM_TAG_SIZE],
+    associated_data: &[u8],
+) -> Result<(), aes_gcm::Error> {
+    let key = Key::<Aes256Gcm>::from_slice(key);
+    let nonce = Nonce::from_slice(iv);
+    let cipher = Aes256Gcm::new(key);
+
+    cipher.decrypt_in_place_detached(nonce, associated_data, ciphertext, auth_tag.into())?;
+
+    Ok(())
+}
+
+// Encrypts the contents of a file using assymetric cryptography. The output contains the
+// ciphertext, the shared secret, and an auth tag
+// Currently initializes a new TRNG instance every call. This may be changed.
+// pub fn asymmetric_encrypt<const N: usize>(
+//     plaintext: &Vec<u8, N>,
+//     public_key: &PublicKey,
+// ) -> Result<AsymmetricEncrypted<N>, CryptoError> {
+//     // Can just generate 32 bytes using random_bytes() and use that as the ephemeral secret
+//     let mut rng = SecureRng::new().map_err(|_| CryptoError::RngError)?;
+//     let ephemeral_secret = EphemeralSecret::random_from_rng(&mut rng);
+//     // Creates a public key specifically for this batch of ciphertext. This public key gets sent
+//     // along with the ciphertext and can be used to derive the secret key to decrypt it.
+//     let cipher_public_key = PublicKey::from(&ephemeral_secret);
+//
+//     let shared_secret = ephemeral_secret.diffie_hellman(public_key);
+//     let hk = Hkdf::<Sha256>::new(None, shared_secret.as_bytes());
+//     let mut aes_key: [u8; 32] = [0; 32];
+//     hk.expand(b"aes-gcm key", &mut aes_key)
+//         .map_err(|_| CryptoError::AsymmetricKeyError)?;
+//
+//     let nonce: [u8; 12] = rng.random_array().map_err(|_| CryptoError::RngError)?;
+//
+//     let (ciphertext, auth_tag) = aes_gcm_encrypt(plaintext.as_slice(), &aes_key, &nonce, &[])
+//         .map_err(|_| CryptoError::AesGcmEncryptError)?;
+//     Ok(AsymmetricEncrypted {
+//         ciphertext,
+//         nonce,
+//         cipher_public_key,
+//         auth_tag,
+//     })
+// }
+
+pub fn asymmetric_encrypt_in_place<const N: usize>(
+    plaintext: &mut [u8],
     public_key: &PublicKey,
-) -> Result<AsymmetricEncrypted<N>, CryptoError> {
+) -> Result<AsymmetricEncryptedMetadata, CryptoError> {
     // Can just generate 32 bytes using random_bytes() and use that as the ephemeral secret
     let mut rng = SecureRng::new().map_err(|_| CryptoError::RngError)?;
     let ephemeral_secret = EphemeralSecret::random_from_rng(&mut rng);
@@ -119,10 +186,9 @@ pub fn asymmetric_encrypt<const N: usize>(
 
     let nonce: [u8; 12] = rng.random_array().map_err(|_| CryptoError::RngError)?;
 
-    let (ciphertext, auth_tag) = aes_gcm_encrypt(plaintext.as_slice(), &aes_key, &nonce, &[])
+    let auth_tag = aes_gcm_encrypt_in_place(plaintext, &aes_key, &nonce, &[])
         .map_err(|_| CryptoError::AesGcmEncryptError)?;
-    Ok(AsymmetricEncrypted {
-        ciphertext,
+    Ok(AsymmetricEncryptedMetadata {
         nonce,
         cipher_public_key,
         auth_tag,
@@ -150,6 +216,26 @@ pub fn asymmetric_decrypt<const N: usize>(
         .map_err(|_| CryptoError::AesGcmDecryptError)?;
 
     Ok(plaintext)
+}
+
+pub fn asymmetric_decrypt_in_place(
+    ciphertext: &mut [u8],
+    nonce: &[u8; 12],
+    cipher_public_key: &PublicKey,
+    auth_tag: &[u8; GCM_TAG_SIZE],
+    private_key: &StaticSecret,
+) -> Result<(), CryptoError> {
+    let shared_secret = private_key.diffie_hellman(cipher_public_key);
+
+    let hk = Hkdf::<Sha256>::new(None, shared_secret.as_bytes());
+    let mut aes_key: [u8; 32] = [0; 32];
+    hk.expand(b"aes-gcm key", &mut aes_key)
+        .map_err(|_| CryptoError::AsymmetricKeyError)?;
+
+    aes_gcm_decrypt_in_place(ciphertext, &aes_key, nonce, auth_tag, &[])
+        .map_err(|_| CryptoError::AesGcmDecryptError)?;
+
+    Ok(())
 }
 
 /// Sign a file digest using ECDSA.
