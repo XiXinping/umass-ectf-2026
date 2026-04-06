@@ -1,7 +1,7 @@
 use crate::random::SecureRng;
 use crate::serialization::serde_x25519_pubkey;
 use aes_gcm::{
-    Aes256Gcm, Key, Nonce,
+    Aes128Gcm, Key, Nonce,
     aead::{AeadInPlace, KeyInit},
 };
 use heapless::Vec;
@@ -10,12 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
-use p256::ecdsa::SigningKey;
-
-use p256::ecdsa::{
-    Signature, VerifyingKey,
-    signature::{Signer, Verifier},
-};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 
 /// The AES-256 block size.
 pub const AES_BLOCK_SIZE: usize = 32;
@@ -81,13 +76,13 @@ pub struct AsymmetricEncryptedMetadata {
 
 pub fn aes_gcm_encrypt<const N: usize>(
     plaintext: &[u8],
-    key: &[u8; 32],
+    key: &[u8; 16],
     iv: &[u8; 12],
     associated_data: &[u8],
 ) -> Result<(Vec<u8, N>, [u8; AUTH_TAG_SIZE]), aes_gcm::Error> {
-    let key = Key::<Aes256Gcm>::from_slice(key);
+    let key = Key::<Aes128Gcm>::from_slice(key);
     let nonce = Nonce::from_slice(iv);
-    let cipher = Aes256Gcm::new(key);
+    let cipher = Aes128Gcm::new(key);
 
     let mut buffer: Vec<u8, N> = Vec::new();
 
@@ -102,13 +97,13 @@ pub fn aes_gcm_encrypt<const N: usize>(
 
 pub fn aes_gcm_encrypt_in_place(
     plaintext: &mut [u8],
-    key: &[u8; 32],
+    key: &[u8; 16],
     iv: &[u8; 12],
     associated_data: &[u8],
 ) -> Result<[u8; AUTH_TAG_SIZE], aes_gcm::Error> {
-    let key = Key::<Aes256Gcm>::from_slice(key);
+    let key = Key::<Aes128Gcm>::from_slice(key);
     let nonce = Nonce::from_slice(iv);
-    let cipher = Aes256Gcm::new(key);
+    let cipher = Aes128Gcm::new(key);
 
     let auth_tag = cipher.encrypt_in_place_detached(nonce, associated_data, plaintext)?;
 
@@ -117,14 +112,14 @@ pub fn aes_gcm_encrypt_in_place(
 
 pub fn aes_gcm_decrypt<const N: usize>(
     ciphertext: &[u8],
-    key: &[u8; 32],
+    key: &[u8; 16],
     iv: &[u8; 12],
     auth_tag: &[u8; AUTH_TAG_SIZE],
     associated_data: &[u8],
 ) -> Result<Vec<u8, N>, aes_gcm::Error> {
-    let key = Key::<Aes256Gcm>::from_slice(key);
+    let key = Key::<Aes128Gcm>::from_slice(key);
     let nonce = Nonce::from_slice(iv);
-    let cipher = Aes256Gcm::new(key);
+    let cipher = Aes128Gcm::new(key);
 
     let mut buffer: Vec<u8, N> = Vec::new();
 
@@ -139,14 +134,14 @@ pub fn aes_gcm_decrypt<const N: usize>(
 
 pub fn aes_gcm_decrypt_in_place(
     ciphertext: &mut [u8],
-    key: &[u8; 32],
+    key: &[u8; 16],
     iv: &[u8; 12],
     auth_tag: &[u8; AUTH_TAG_SIZE],
     associated_data: &[u8],
 ) -> Result<(), aes_gcm::Error> {
-    let key = Key::<Aes256Gcm>::from_slice(key);
+    let key = Key::<Aes128Gcm>::from_slice(key);
     let nonce = Nonce::from_slice(iv);
-    let cipher = Aes256Gcm::new(key);
+    let cipher = Aes128Gcm::new(key);
 
     cipher.decrypt_in_place_detached(nonce, associated_data, ciphertext, auth_tag.into())?;
 
@@ -198,7 +193,7 @@ pub fn asymmetric_encrypt_in_place<const N: usize>(
 
     let shared_secret = ephemeral_secret.diffie_hellman(public_key);
     let hk = Hkdf::<Sha256>::new(None, shared_secret.as_bytes());
-    let mut aes_key: [u8; 32] = [0; 32];
+    let mut aes_key: [u8; 16] = [0; 16];
     hk.expand(b"aes-gcm key", &mut aes_key)
         .map_err(|_| CryptoError::AsymmetricKeyError)?;
 
@@ -222,7 +217,7 @@ pub fn asymmetric_decrypt<const N: usize>(
     let shared_secret = private_key.diffie_hellman(cipher_public_key);
 
     let hk = Hkdf::<Sha256>::new(None, shared_secret.as_bytes());
-    let mut aes_key: [u8; 32] = [0; 32];
+    let mut aes_key: [u8; 16] = [0; 16];
     hk.expand(b"aes-gcm key", &mut aes_key)
         .map_err(|_| CryptoError::AsymmetricKeyError)?;
 
@@ -242,7 +237,7 @@ pub fn asymmetric_decrypt_in_place(
     let shared_secret = private_key.diffie_hellman(cipher_public_key);
 
     let hk = Hkdf::<Sha256>::new(None, shared_secret.as_bytes());
-    let mut aes_key: [u8; 32] = [0; 32];
+    let mut aes_key: [u8; 16] = [0; 16];
     hk.expand(b"aes-gcm key", &mut aes_key)
         .map_err(|_| CryptoError::AsymmetricKeyError)?;
 
@@ -257,8 +252,7 @@ pub fn ecc_sign_file_digest(
     digest: &[u8],
     private_key_bytes: &[u8; PRIVATE_KEY_SIZE],
 ) -> Result<Signature, AuthError> {
-    let signing_key =
-        SigningKey::from_slice(private_key_bytes).map_err(|_| AuthError::KeyImportFailed)?;
+    let signing_key = SigningKey::from_bytes(private_key_bytes);
 
     let signature: Signature = signing_key.sign(digest);
 
@@ -269,10 +263,10 @@ pub fn ecc_sign_file_digest(
 pub fn ecc_verify_file_digest(
     signature: &Signature,
     digest: &[u8],
-    public_key_bytes: &[u8],
+    public_key_bytes: &[u8; PUBLIC_KEY_SIZE],
 ) -> Result<(), AuthError> {
     let verifying_key =
-        VerifyingKey::from_sec1_bytes(public_key_bytes).map_err(|_| AuthError::KeyImportFailed)?;
+        VerifyingKey::from_bytes(public_key_bytes).map_err(|_| AuthError::KeyImportFailed)?;
 
     verifying_key
         .verify(digest, signature)

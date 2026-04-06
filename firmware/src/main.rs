@@ -11,6 +11,7 @@ use ectf_2026::random::SecureRng;
 use ectf_2026::secrets::PIN_HASH;
 use ectf_2026::secrets::PIN_SALT;
 use ectf_2026::secure_filesystem::Filesystem;
+use embassy_mspm0::peripherals::SYSCTL;
 use embassy_mspm0::uart::{Config, Uart};
 use x25519_dalek::PublicKey;
 use x25519_dalek::StaticSecret;

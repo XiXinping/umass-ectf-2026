@@ -73,9 +73,13 @@ serde = { version = "1.0.228", default-features = false, features = ["derive"] }
 rtt-target = { version = "0.6.2", features = ["defmt"] }
 bytemuck = { version = "1.25.0", features = ["derive"] }
 zerocopy = { version = "0.8.48", features = ["derive"] }
+ed25519-dalek = { version = "2.2.0", default-features = false }
 
 
 [profile.release]
+opt-level = 3
+codegen-units = 1
+lto = true
 debug = 2
 
 [profile.dev]
@@ -84,7 +88,7 @@ debug = 2
 debug-assertions = true
 overflow-checks = true
 lto = "thin"
-codegen-uints = 1
+codegen-units = 1
 strip = false
 
 

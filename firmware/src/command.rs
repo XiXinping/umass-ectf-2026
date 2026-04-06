@@ -389,7 +389,7 @@ fn cmd_write(
     };
 
     let t1 = unsafe { core::ptr::read_volatile(SYST_CVR) };
-
+    //
     if let Err(_e) = fs.write_file(slot, &file, uuid, flash) {
         // host.print_debug("write_file failed:");
         // host.print_hex_debug(&[e as u8]);

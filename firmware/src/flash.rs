@@ -82,6 +82,7 @@ fn wait_cmd_done() -> bool {
 }
 
 /// Clear any stale status flags before issuing a new command.
+#[inline(never)]
 #[unsafe(link_section = ".data")]
 fn clear_status() {
     unsafe {
@@ -91,6 +92,7 @@ fn clear_status() {
     }
 }
 
+#[inline(never)]
 #[unsafe(link_section = ".data")]
 fn clear_status_blocking() {
     clear_status();
@@ -98,6 +100,7 @@ fn clear_status_blocking() {
 }
 
 /// Unprotect all sectors so erase/program can proceed.
+#[inline(never)]
 #[unsafe(link_section = ".data")]
 fn unprotect_sectors() {
     unsafe {
@@ -110,6 +113,7 @@ fn unprotect_sectors() {
     }
 }
 
+#[inline(never)]
 #[unsafe(link_section = ".data")]
 fn are_sectors_unprotected() -> bool {
     unsafe {
@@ -125,6 +129,7 @@ fn are_sectors_unprotected() -> bool {
 /// Erase one flash sector (1024 bytes).
 ///
 /// The address must be sector-aligned.
+#[inline(never)]
 #[unsafe(link_section = ".data")]
 pub fn flash_simple_erase_page(address: u32) -> Result<(), FsError> {
     clear_status_blocking();
@@ -183,14 +188,14 @@ pub fn flash_simple_write(address: u32, data: &[u8]) -> Result<(), FsError> {
     let padded_byte_len = size_32b * 4;
     let chunk_count = padded_byte_len / 8;
 
-    info!(
-        "[+{} ms] flash_simple_write start addr=0x{:08x} size={} padded={} chunks={}",
-        elapsed_ms(op_start),
-        address,
-        size,
-        padded_byte_len,
-        chunk_count
-    );
+    // info!(
+    //     "[+{} ms] flash_simple_write start addr=0x{:08x} size={} padded={} chunks={}",
+    //     elapsed_ms(op_start),
+    //     address,
+    //     size,
+    //     padded_byte_len,
+    //     chunk_count
+    // );
 
     let mut dump_offset: usize = 0;
     while dump_offset < padded_byte_len {
@@ -203,45 +208,46 @@ pub fn flash_simple_write(address: u32, data: &[u8]) -> Result<(), FsError> {
         let b6 = data_byte_or_pad(data, dump_offset + 6);
         let b7 = data_byte_or_pad(data, dump_offset + 7);
 
-        info!(
-            "[+{} ms] flash_simple_write prebuf chunk={} addr=0x{:08x} bytes={:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
-            elapsed_ms(op_start),
-            dump_offset / 8,
-            address + dump_offset as u32,
-            b0,
-            b1,
-            b2,
-            b3,
-            b4,
-            b5,
-            b6,
-            b7
-        );
-
+        // info!(
+        //     "[+{} ms] flash_simple_write prebuf chunk={} addr=0x{:08x} bytes={:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+        //     elapsed_ms(op_start),
+        //     dump_offset / 8,
+        //     address + dump_offset as u32,
+        //     b0,
+        //     b1,
+        //     b2,
+        //     b3,
+        //     b4,
+        //     b5,
+        //     b6,
+        //     b7
+        // );
+        //
         dump_offset += 8;
     }
 
     // Program in 8-byte (64-bit flash-word) chunks directly from source
     let mut offset: usize = 0;
     while offset < padded_byte_len {
-        let chunk_start = Instant::now();
+        // let chunk_start = Instant::now();
 
         clear_status();
-        info!(
-            "[+{} ms] flash_simple_write chunk={} clear_status done (step={} ms)",
-            elapsed_ms(op_start),
-            offset / 8,
-            elapsed_ms(chunk_start)
-        );
+        // info!(
+        //     "[+{} ms] flash_simple_write chunk={} clear_status done (step={} ms)",
+        //     elapsed_ms(op_start),
+        //     offset / 8,
+        //     elapsed_ms(chunk_start)
+        // );
 
-        let unprotect_start = Instant::now();
+        // let unprotect_start = Instant::now();
         unprotect_sectors();
-        info!(
-            "[+{} ms] flash_simple_write chunk={} unprotect done (step={} ms)",
-            elapsed_ms(op_start),
-            offset / 8,
-            elapsed_ms(unprotect_start)
-        );
+
+        // info!(
+        //     "[+{} ms] flash_simple_write chunk={} unprotect done (step={} ms)",
+        //     elapsed_ms(op_start),
+        //     offset / 8,
+        //     elapsed_ms(unprotect_start)
+        // );
 
         let word0 = u32::from_le_bytes([
             data_byte_or_pad(data, offset),
@@ -256,14 +262,14 @@ pub fn flash_simple_write(address: u32, data: &[u8]) -> Result<(), FsError> {
             data_byte_or_pad(data, offset + 7),
         ]);
 
-        info!(
-            "[+{} ms] flash_simple_write chunk={} calc addr=0x{:08x} word0=0x{:08x} word1=0x{:08x}",
-            elapsed_ms(op_start),
-            offset / 8,
-            address + offset as u32,
-            word0,
-            word1
-        );
+        // info!(
+        //     "[+{} ms] flash_simple_write chunk={} calc addr=0x{:08x} word0=0x{:08x} word1=0x{:08x}",
+        //     elapsed_ms(op_start),
+        //     offset / 8,
+        //     address + offset as u32,
+        //     word0,
+        //     word1
+        // );
 
         unsafe {
             reg_write(FLASHCTL_CMDTYPE, 0x01);
@@ -275,40 +281,40 @@ pub fn flash_simple_write(address: u32, data: &[u8]) -> Result<(), FsError> {
             reg_write(FLASHCTL_CMDEXEC, CMDEXEC_EXECUTE);
         }
 
-        info!(
-            "[+{} ms] flash_simple_write chunk={} regs written cmdtype=0x01 cmdctl=0x0E byteen=0xFF",
-            elapsed_ms(op_start),
-            offset / 8
-        );
+        // info!(
+        //     "[+{} ms] flash_simple_write chunk={} regs written cmdtype=0x01 cmdctl=0x0E byteen=0xFF",
+        //     elapsed_ms(op_start),
+        //     offset / 8
+        // );
 
         let wait_start = Instant::now();
 
         if !wait_cmd_done() {
-            info!(
-                "[+{} ms] flash_simple_write chunk={} wait failed (step={} ms)",
-                elapsed_ms(op_start),
-                offset / 8,
-                elapsed_ms(wait_start)
-            );
+            // // info!(
+            // //     "[+{} ms] flash_simple_write chunk={} wait failed (step={} ms)",
+            // //     elapsed_ms(op_start),
+            // //     offset / 8,
+            // //     elapsed_ms(wait_start)
+            // // );
             return Err(FsError::FlashWriteError);
         }
 
-        info!(
-            "[+{} ms] flash_simple_write chunk={} write done (wait_step={} ms total_chunk={} ms)",
-            elapsed_ms(op_start),
-            offset / 8,
-            elapsed_ms(wait_start),
-            elapsed_ms(chunk_start)
-        );
+        // info!(
+        //     "[+{} ms] flash_simple_write chunk={} write done (wait_step={} ms total_chunk={} ms)",
+        //     elapsed_ms(op_start),
+        //     offset / 8,
+        //     elapsed_ms(wait_start),
+        //     elapsed_ms(chunk_start)
+        // );
 
         offset += 8;
     }
 
-    info!(
-        "[+{} ms] flash_simple_write done total={} ms",
-        elapsed_ms(op_start),
-        elapsed_ms(op_start)
-    );
+    // info!(
+    //     "[+{} ms] flash_simple_write done total={} ms",
+    //     elapsed_ms(op_start),
+    //     elapsed_ms(op_start)
+    // );
 
     Ok(())
 }
