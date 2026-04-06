@@ -26,7 +26,7 @@ pub const AUTH_TAG_SIZE: usize = 16;
 pub const PUBLIC_KEY_SIZE: usize = size_of::<PublicKey>();
 pub const PRIVATE_KEY_SIZE: usize = 32;
 /// The size of an ED25519 signature
-pub const SIGNATURE_SIZE: usize = 32;
+pub const SIGNATURE_SIZE: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
 pub enum CryptoError {

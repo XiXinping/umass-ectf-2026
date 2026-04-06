@@ -1,5 +1,6 @@
 //! Command dispatch and handlers for the eCTF host protocol.
 
+use defmt::println;
 use heapless::{Vec, format};
 use x25519_dalek::{PublicKey, StaticSecret};
 use zerocopy::transmute;
@@ -352,12 +353,7 @@ fn cmd_write(
     let _pin = &buf[PIN_OFF..PIN_OFF + 6];
     let slot = buf[SLOT_OFF];
     let group_id = u16::from_le_bytes([buf[GROUP_OFF], buf[GROUP_OFF + 1]]);
-    let name_raw = &buf[NAME_OFF..NAME_OFF + MAX_NAME_SIZE];
-    let name_len = name_raw
-        .iter()
-        .position(|&b| b == 0)
-        .unwrap_or(name_raw.len());
-    let name = &name_raw[..name_len].as_array().unwrap();
+    let name: [u8; 32] = buf[NAME_OFF..NAME_OFF + MAX_NAME_SIZE].try_into().unwrap();
     let uuid: [u8; 16] = buf[UUID_OFF..UUID_OFF + UUID_SIZE].try_into().unwrap();
     let contents_len = u16::from_le_bytes([buf[CLEN_OFF], buf[CLEN_OFF + 1]]) as usize;
 
@@ -367,11 +363,11 @@ fn cmd_write(
         return;
     }
 
-    let contents: Vec<u8, MAX_CONTENTS_SIZE> =
-        Vec::from_slice(&buf[CONTENTS_OFF..CONTENTS_OFF + contents_len]).unwrap();
+    let contents = &buf[CONTENTS_OFF..CONTENTS_OFF + contents_len];
 
-    let file = match ProtectedFile::create(group_id, uuid, name, &contents) {
-        Ok(f) => f,
+    let mut file = ProtectedFile::default();
+    match ProtectedFile::create_in(&mut file, group_id, uuid, &name, contents) {
+        Ok(()) => (),
         Err(FileError::NoWritePermission) => {
             host.print_error(
                 &format!(
@@ -633,7 +629,7 @@ fn cmd_listen(
     host: &mut HostUart,
     uart1: &mut HostUart,
     _pkt_len: u16,
-    buf: &mut [u8],
+    _buf: &mut [u8],
     flash: &impl Flash,
     fs: &Filesystem,
 ) {

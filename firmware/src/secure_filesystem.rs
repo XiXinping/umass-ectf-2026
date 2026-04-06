@@ -2,8 +2,8 @@
 // provides a secure interface for file operations
 
 use crate::crypto::{
-    NONCE_SIZE, asymmetric_decrypt_in_place, asymmetric_encrypt_in_place, ecc_sign_file_digest,
-    ecc_verify_file_digest,
+    AUTH_TAG_SIZE, NONCE_SIZE, PUBLIC_KEY_SIZE, SIGNATURE_SIZE, asymmetric_decrypt_in_place,
+    asymmetric_encrypt_in_place, ecc_sign_file_digest, ecc_verify_file_digest,
 };
 use crate::permission::{self, PermissionType, get_public_key};
 
@@ -167,6 +167,24 @@ pub struct FileMetadata {
     pub name: [u8; MAX_NAME_SIZE],
 }
 
+impl Default for ProtectedFile {
+    fn default() -> ProtectedFile {
+        ProtectedFile {
+            in_use: 0,
+            group_id: 0,
+            uuid: [0; UUID_SIZE],
+            name: [0; MAX_NAME_SIZE],
+            nonce: [0; NONCE_SIZE],
+            auth_tag: [0; AUTH_TAG_SIZE],
+            signature: [0; SIGNATURE_SIZE],
+            ciphertext_public_key: [0; PUBLIC_KEY_SIZE],
+            ciphertext: [0; MAX_CONTENTS_SIZE],
+            plaintext_len: 0,
+            _padding: [0; 10],
+        }
+    }
+}
+
 // TO-DO: Add signature check
 impl ProtectedFile {
     pub fn signature(&self) -> Signature {
@@ -230,52 +248,106 @@ impl ProtectedFile {
         })
     }
 
-    // Create a new protected file from plaintext contents
-    pub fn create(
+    // // Create a new protected file from plaintext contents
+    // pub fn create(
+    //     group_id: u16,
+    //     uuid: [u8; 16],
+    //     name: &[u8; MAX_NAME_SIZE],
+    //     contents: &[u8],
+    // ) -> Result<Self, FileError> {
+    //     let contents = if contents.len() > MAX_CONTENTS_SIZE {
+    //         &contents[..MAX_CONTENTS_SIZE]
+    //     } else {
+    //         contents
+    //     };
+    //     let write_key_bytes = permission::get_private_key(group_id, PermissionType::Write)
+    //         .ok_or(FileError::NoWritePermission)?;
+    //
+    //     // The read public key corresponding to the group ID of the file.
+    //     let group_read_public_key = permission::get_public_key(group_id, PermissionType::Read)
+    //         .ok_or(FileError::InvalidGroupId)?;
+    //
+    //     let mut file = ProtectedFile {
+    //         in_use: 0,
+    //         group_id,
+    //         uuid,
+    //         name: *name,
+    //         nonce: [0; NONCE_SIZE],
+    //         auth_tag: [0; AUTH_TAG_SIZE],
+    //         signature: [0; SIGNATURE_SIZE],
+    //         ciphertext_public_key: [0; PUBLIC_KEY_SIZE],
+    //         ciphertext: [0; MAX_CONTENTS_SIZE],
+    //         plaintext_len: contents.len(),
+    //         _padding: [0; 10],
+    //     };
+    //
+    //     // Encrypt the contents of the file
+    //     // let mut ciphertext = [0; MAX_CONTENTS_SIZE];
+    //     file.ciphertext.copy_from_slice(contents);
+    //     let (nonce, auth_tag, cipher_public_key) =
+    //         asymmetric_encrypt_in_place::<MAX_CONTENTS_SIZE>(
+    //             &mut file.ciphertext,
+    //             &PublicKey::from(group_read_public_key),
+    //         )
+    //         .map_err(|_| FileError::EncryptError)?;
+    //
+    //     let digest = Self::digest(group_id, uuid, name, &file.ciphertext);
+    //     let signature = ecc_sign_file_digest(&digest, &write_key_bytes)
+    //         .map_err(|_| FileError::GenSignatureError)?;
+    //
+    //     file.nonce = nonce;
+    //     file.auth_tag = auth_tag;
+    //     file.signature = signature.to_bytes().into();
+    //     file.ciphertext_public_key = cipher_public_key.to_bytes();
+    //
+    //     Ok(file)
+    // }
+
+    /// Create a new ProtectedFile and output to an already existing file. This avoids creating
+    /// unnecessaary copies on the stack.
+    pub fn create_in(
+        out: &mut ProtectedFile,
         group_id: u16,
         uuid: [u8; 16],
         name: &[u8; MAX_NAME_SIZE],
         contents: &[u8],
-    ) -> Result<Self, FileError> {
+    ) -> Result<(), FileError> {
         let contents = if contents.len() > MAX_CONTENTS_SIZE {
             &contents[..MAX_CONTENTS_SIZE]
         } else {
             contents
         };
+
         let write_key_bytes = permission::get_private_key(group_id, PermissionType::Write)
             .ok_or(FileError::NoWritePermission)?;
-
-        // The read public key corresponding to the group ID of the file.
         let group_read_public_key = permission::get_public_key(group_id, PermissionType::Read)
             .ok_or(FileError::InvalidGroupId)?;
 
-        // Encrypt the contents of the file
-        let mut ciphertext = [0; MAX_CONTENTS_SIZE];
-        ciphertext.copy_from_slice(contents);
+        out.ciphertext[..contents.len()].copy_from_slice(contents);
+
         let (nonce, auth_tag, cipher_public_key) =
             asymmetric_encrypt_in_place::<MAX_CONTENTS_SIZE>(
-                &mut ciphertext,
+                &mut out.ciphertext,
                 &PublicKey::from(group_read_public_key),
             )
             .map_err(|_| FileError::EncryptError)?;
 
-        let digest = Self::digest(group_id, uuid, name, &ciphertext);
+        let digest = Self::digest(group_id, uuid, name, &out.ciphertext);
         let signature = ecc_sign_file_digest(&digest, &write_key_bytes)
             .map_err(|_| FileError::GenSignatureError)?;
 
-        Ok(ProtectedFile {
-            in_use: 0,
-            group_id,
-            uuid,
-            name: *name,
-            nonce,
-            auth_tag,
-            signature: signature.to_bytes().into(),
-            ciphertext_public_key: cipher_public_key.to_bytes(),
-            ciphertext,
-            plaintext_len: contents.len(),
-            _padding: [0; 10],
-        })
+        out.in_use = 0;
+        out.group_id = group_id;
+        out.uuid = uuid;
+        out.name = *name;
+        out.nonce = nonce;
+        out.auth_tag = auth_tag;
+        out.signature = signature.to_bytes().into();
+        out.ciphertext_public_key = cipher_public_key.to_bytes();
+        out.plaintext_len = contents.len();
+        out._padding = [0; 10];
+
+        Ok(())
     }
 
     /// Create a cryptographic digest using HMAC with SHA-256 using a file's contents, group ID,
