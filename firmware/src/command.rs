@@ -12,7 +12,7 @@ use crate::crypto::{
     asymmetric_encrypt_in_place,
 };
 use crate::host::{HostUart, MsgType};
-use crate::permission::{PermissionType, get_private_key, get_public_key, has_permission};
+use crate::permission::{self, PermissionType, get_private_key, get_public_key, has_permission};
 use crate::secrets::{PERMISSIONS, PIN_HASH, PIN_SALT};
 use crate::secure_filesystem::{
     self, FILE_IN_USE, FileError, FileMetadata, Filesystem, Flash, FsError, MAX_CONTENTS_SIZE,
@@ -133,19 +133,15 @@ fn cmd_list(
 fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, fs: &Filesystem) {
     const PIN_OFF: usize = 0;
     const SLOT_OFF: usize = 6;
-    const UUID_OFF: usize = 7;
-    const HEADER_SIZE: usize = 23;
+    const CMD_SIZE: usize = 7;
 
-    if (pkt_len as usize) < HEADER_SIZE {
+    if (pkt_len as usize) < CMD_SIZE {
         host.print_error("Read packet too short");
         return;
     }
 
     host.print_debug("Checking PIN\n");
-    if pkt_len < PIN_LENGTH as u16 {
-        host.print_error("Invalid pin length!");
-        return;
-    }
+
     let pin = &buf[0..PIN_LENGTH];
     match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
         SecurityStatus::InvalidLength => {
@@ -161,11 +157,11 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
 
     let _pin = &buf[PIN_OFF..PIN_OFF + 6];
     let slot = buf[SLOT_OFF];
-    let uuid = &buf[UUID_OFF..UUID_OFF + UUID_SIZE];
     host.print_debug("Read: Parsed slot and UUID\n");
 
-    let file = match fs.read_file(slot, flash) {
-        Ok(f) => f,
+    let mut file = ProtectedFile::default();
+    match fs.read_file_in(&mut file, slot, flash) {
+        Ok(()) => (),
         Err(FsError::EmptySlot) => {
             host.print_error(&format!(20; "Slot {} is empty", slot).unwrap());
             return;
@@ -175,8 +171,9 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
             return;
         }
         Err(FsError::InvalidSignature) => {
-            host.print_error("Invalid signature");
-            return;
+            // host.print_error("Invalid signature");
+            // return;
+            host.print_debug("Warning: Invalid signature");
         }
         Err(_) => {
             host.print_error("Something has gone wrong!");
@@ -184,119 +181,38 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
         }
     };
 
-    // Check that the file UUID matches the requested UUID
-    if file.uuid != uuid {
-        host.print_error("UUID does not match requested file UUID!");
-        return;
-    }
-
-    // // Get file metadata from FAT
-    // let entry = match fs.get_file_metadata(slot) {
-    //     Ok(e) => e,
-    //     Err(_) => {
-    //         host.print_error("Invalid file slot");
-    //         return;
-    //     }
-    // };
-    // host.print_debug("Read: Got FAT entry\n");
-    //
-    // // Verify the entry is valid
-    // if entry.is_empty() {
-    //     host.print_error("File slot empty");
-    //     return;
-    // }
-    // host.print_debug("Read: Entry is not empty\n");
-    //
-    // // Verify UUID matches
-    // if entry.uuid != uuid {
-    //     host.print_error("UUID mismatch");
-    //     return;
-    // }
-    // host.print_debug("Read: UUID verified\n");
-
-    // Allocate buffer and read file from flash
-    // let mut file_buf = [0u8; size_of::<ProtectedFile>()]; // +40 for metadata
-    // if entry.length as usize > file_buf.len() {
-    //     host.print_error("File too large");
-    //     return;
-    // }
-    //
-    // flash.read(entry.flash_addr, &mut file_buf[..entry.length as usize]);
-    // host.print_debug("Read: File loaded from flash\n");
-    //
-    // // Extract the contents from the file structure
-    // // Layout: in_use(4) + group_id(2) + name(32) + contents_len(2) + contents(...)
-    // const CONTENTS_LEN_OFF: usize = 4 + 2 + MAX_NAME_SIZE; // 38
-    // const METADATA_SIZE: usize = CONTENTS_LEN_OFF + 2; // 40
-    // if (entry.length as usize) < METADATA_SIZE {
-    //     host.print_error("Stored file metadata too short");
-    //     return;
-    // }
-    // let contents_len =
-    //     u16::from_le_bytes([file_buf[CONTENTS_LEN_OFF], file_buf[CONTENTS_LEN_OFF + 1]]) as usize;
-    // host.print_debug("Read: Extracted contents length\n");
-    //
-    // if contents_len > MAX_CONTENTS_SIZE || METADATA_SIZE + contents_len > entry.length as usize {
-    //     host.print_error("Invalid file contents length");
-    //     return;
-    // }
-    // host.print_debug("Read: Contents length validated\n");
-    //
-    // // Send back payload in host-tools format: name(32) + contents
-    // const NAME_OFF: usize = 4 + 2; // after in_use + group_id
-    // let name = &file_buf[NAME_OFF..NAME_OFF + MAX_NAME_SIZE];
-    // let contents = &file_buf[METADATA_SIZE..METADATA_SIZE + contents_len];
-    // let file = fs.read_file(flash);
-    // let contents = match file.decrypt() {
-    //     Ok(contents) => contents,
-    //     Err(FileError::NoReadPermission) => {
-    //         host.print_error(
-    //             &format!(
-    //                 64; "HSM does not have permission to write files from group: {:#x}",
-    //                 file.group_id
-    //             )
-    //             .unwrap(),
-    //         );
-    //         return;
-    //     }
-    //     Err(FileError::DecryptError) => {
-    //         host.print_error("Error while decrypting file!");
-    //         return;
-    //     }
-    //     Err(_) => {
-    //         host.print_error("Something went wrong!");
-    //         return;
-    //     }
-    // };
     let group_id = file.group_id;
-    let unprotected_file = match file.to_unprotected_file() {
-        Ok(contents) => contents,
-        Err(FileError::NoReadPermission) => {
+
+    let read_key =
+        if let Some(bytes) = permission::get_private_key(file.group_id, PermissionType::Read) {
+            StaticSecret::from(bytes)
+        } else {
             host.print_error(
-                &format!(
-                    64; "HSM does not have permission to write files from group: {:#x}",
-                    group_id
-                )
-                .unwrap(),
+                &format!(64; "HSM has no permissions to read files from group: {:#x}", group_id)
+                    .unwrap(),
             );
             return;
-        }
-        Err(FileError::DecryptError) => {
-            host.print_error("Error while decrypting file!");
-            return;
-        }
-        Err(_) => {
-            host.print_error("Something went wrong!");
-            return;
-        }
+        };
+
+    if asymmetric_decrypt_in_place(
+        &mut file.ciphertext,
+        &file.nonce,
+        &PublicKey::from(file.ciphertext_public_key),
+        &file.auth_tag,
+        &read_key,
+    )
+    .is_err()
+    {
+        host.print_error("Error while decrypting file!");
+        return;
     };
-    let plaintext = &unprotected_file.plaintext[..unprotected_file.plaintext_len];
+    let plaintext = &file.ciphertext[..file.plaintext_len];
 
     host.print_debug("Read: Contents (hex):");
     host.print_hex_debug(plaintext);
     host.print_debug("Read: Contents debug sent\n");
 
-    let _ = host.write_packet_chunks(MsgType::Read, &[&unprotected_file.name, plaintext]);
+    let _ = host.write_packet_chunks(MsgType::Read, &[&file.name, plaintext]);
     // let mut resp = [0u8; MAX_NAME_SIZE + MAX_CONTENTS_SIZE];
     // resp[..MAX_NAME_SIZE].copy_from_slice(&file.name);
     // resp[MAX_NAME_SIZE..MAX_NAME_SIZE + contents.len()].copy_from_slice(&contents);

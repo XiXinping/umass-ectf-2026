@@ -15,7 +15,7 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use x25519_dalek::{PublicKey, StaticSecret};
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, transmute};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, transmute, transmute_mut};
 
 // ─── Constants (must match C functional spec) ───────────────────────
 pub const MAX_FILE_COUNT: usize = 8;
@@ -95,7 +95,7 @@ pub trait Flash {
 
 /// FAT entry — matches the C `filesystem_entry_t` layout exactly.
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, defmt::Format)]
 pub struct FatEntry {
     pub uuid: [u8; 16],
     pub length: u16,
@@ -538,6 +538,41 @@ impl Filesystem {
             Ok(()) => Ok(file),
             Err(_) => Err(FsError::InvalidSignature),
         }
+    }
+
+    pub fn read_file_in(
+        &self,
+        out: &mut ProtectedFile,
+        slot: u8,
+        flash: &impl Flash,
+    ) -> Result<(), FsError> {
+        let idx = Self::validate_slot(slot)?;
+
+        let entry = &self.fat[idx];
+        println!("{:?}", entry);
+        if entry.is_empty() {
+            return Err(FsError::InvalidFatEntry);
+        }
+
+        let len = entry.length as usize;
+        if len > MAX_SERIALIZED_FILE {
+            return Err(FsError::InvalidFatEntry);
+        }
+        let buf: &mut [u8; size_of::<ProtectedFile>()] = transmute_mut!(out);
+        // Read from flash into bytes
+        flash.read(entry.flash_addr, &mut buf[..len]);
+
+        // Interpret bytes as ProtectedFile
+        // let file = unsafe {
+        //     // pointer to bytes as *const ProtectedFile
+        //     let p = bytes.as_ptr() as *const ProtectedFile;
+        //     // read_unaligned to avoid alignment UB if alignment isn't guaranteed
+        //     ptr::read_unaligned(p)
+        // };
+        out.verify_signature()
+            .map_err(|_| FsError::InvalidSignature)?;
+
+        Ok(())
     }
 
     /// Get read-only access to a FAT entry's metadata.
