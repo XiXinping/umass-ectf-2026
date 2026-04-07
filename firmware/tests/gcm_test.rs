@@ -20,11 +20,11 @@ mod gcm_tests {
 
         let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-        let mut key_data: [u8; 32] = [0u8; 32];
-        for i in 0..32 {
+        let mut key_data: [u8; 16] = [0u8; 16];
+        for i in 0..16 {
             key_data[i] = i as u8;
         }
-        let key: &[u8; 32] = &key_data;
+        let key: &[u8; 16] = &key_data;
 
         let mut iv_data: [u8; 12] = [0u8; 12];
         for i in 0..12 {
@@ -60,11 +60,11 @@ mod gcm_tests {
         hex::decode_to_slice(auth_tag_hex, &mut auth_tag_bytes)
             .expect("Decoding failed: ensure the string is 32 bytes");
 
-        let mut key_data: [u8; 32] = [0u8; 32];
-        for i in 0..32 {
+        let mut key_data: [u8; 16] = [0u8; 16];
+        for i in 0..16 {
             key_data[i] = i as u8;
         }
-        let key: &[u8; 32] = &key_data;
+        let key: &[u8; 16] = &key_data;
 
         let mut iv_data: [u8; 12] = [0u8; 12];
         for i in 0..12 {
@@ -98,11 +98,11 @@ mod gcm_tests {
         let plaintext: &[u8] = i_have_a_dream.as_bytes();
         let additional_data: &[u8] = aad.as_bytes();
 
-        let mut key_data: [u8; 32] = [0u8; 32];
-        for i in 0..32 {
+        let mut key_data: [u8; 16] = [0u8; 16];
+        for i in 0..16 {
             key_data[i] = i as u8;
         }
-        let key: &[u8; 32] = &key_data;
+        let key: &[u8; 16] = &key_data;
 
         let mut iv_data: [u8; 12] = [0u8; 12];
         for i in 0..12 {
@@ -138,11 +138,11 @@ mod gcm_tests {
         hex::decode_to_slice(expected_auth_tag, &mut auth_tag_bytes)
             .expect("Decoding failed: ensure the string is 32 bytes");
 
-        let mut key_data: [u8; 32] = [0u8; 32];
-        for i in 0..32 {
+        let mut key_data: [u8; 16] = [0u8; 16];
+        for i in 0..16 {
             key_data[i] = i as u8;
         }
-        let key: &[u8; 32] = &key_data;
+        let key: &[u8; 16] = &key_data;
 
         let mut iv_data: [u8; 12] = [0u8; 12];
         for i in 0..12 {
@@ -175,11 +175,11 @@ mod gcm_tests {
         hex::decode_to_slice(expected_auth_tag, &mut auth_tag_bytes)
             .expect("Decoding failed: ensure the string is 32 bytes");
 
-        let mut key_data: [u8; 32] = [0u8; 32];
+        let mut key_data: [u8; 16] = [0u8; 16];
         for i in 0..32 {
             key_data[i] = i as u8;
         }
-        let key: &[u8; 32] = &key_data;
+        let key: &[u8; 16] = &key_data;
 
         let mut iv_data: [u8; 12] = [0u8; 12];
         for i in 0..12 {
@@ -212,11 +212,11 @@ mod gcm_tests {
         hex::decode_to_slice(expected_auth_tag, &mut auth_tag_bytes)
             .expect("Decoding failed: ensure the string is 32 bytes");
 
-        let mut key_data: [u8; 32] = [0u8; 32];
-        for i in 0..32 {
+        let mut key_data: [u8; 16] = [0u8; 16];
+        for i in 0..16 {
             key_data[i] = i as u8;
         }
-        let key: &[u8; 32] = &key_data;
+        let key: &[u8; 16] = &key_data;
 
         let mut iv_data: [u8; 12] = [0u8; 12];
         for i in 0..12 {

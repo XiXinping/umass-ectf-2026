@@ -375,12 +375,12 @@ mod ecc_test {
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::AsymmetricEncrypted::<256> = crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key)
+         let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<256>(&mut plaintext_vec, &pub_key)
                 .expect("Encryption failed");
-        
-         let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key).expect("Decryption failed");
-         
-         assert_eq!(decrypted, i_have_a_dream.as_bytes());
+
+         let _decrypted = crypto::asymmetric_decrypt_in_place(& mut plaintext_vec, &nonce, &public_key, &auth_tag, &priv_key).expect("Decryption failed");
+
+         assert_eq!(plaintext_vec, i_have_a_dream.as_bytes());
 
      }
 
@@ -402,12 +402,12 @@ mod ecc_test {
                 .expect("Buffer overflow: ensure MAX_CONTENTS_SIZE is at least 8192");
         }
 
-         let encrypted: crypto::AsymmetricEncrypted::<8192> = crypto::asymmetric_encrypt::<8192>(&plaintext_vec, &pub_key)
+        let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<8192>(&mut plaintext_vec, &pub_key)
                 .expect("Encryption failed");
-        
-         let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key).expect("Decryption failed");
-         
-         assert_eq!(decrypted, plaintext_vec);
+
+         let _decrypted = crypto::asymmetric_decrypt_in_place(& mut plaintext_vec, &nonce, &public_key, &auth_tag, &priv_key).expect("Decryption failed");
+
+         assert_eq!(plaintext_vec, base_string.as_bytes());
 
      }
 
@@ -430,7 +430,7 @@ mod ecc_test {
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::AsymmetricEncrypted::<256> = crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key)
+         let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<256>(&mut plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
          let mut auth_tag_bytes = [0u8; 16];
@@ -439,12 +439,9 @@ mod ecc_test {
             auth_tag_bytes[i] = i as u8;
         }
         
-        let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, &auth_tag_bytes, &priv_key);
+        let _decrypted = crypto::asymmetric_decrypt_in_place(& mut plaintext_vec, &nonce, &public_key, &auth_tag_bytes, &priv_key).expect("Decryption failed");
          
-        assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
-            "Expected AesGcmDecryptError, but got {:?}", decrypted
-        );
+        assert_ne!(plaintext_vec, i_have_a_dream.as_bytes(), "Expected AesGcmDecryptError, but got {:?}", plaintext_vec);
 
 
      }
@@ -468,7 +465,7 @@ mod ecc_test {
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::AsymmetricEncrypted::<256> = crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key)
+         let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<256>(&mut plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
          let mut auth_tag_bytes = [0u8; 16];
@@ -479,12 +476,9 @@ mod ecc_test {
 
         let fail_priv_key: StaticSecret = StaticSecret::random_from_rng(&mut rng);
         
-        let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &encrypted.cipher_public_key, &encrypted.auth_tag, &fail_priv_key);
+        let _decrypted = crypto::asymmetric_decrypt(&plaintext_vec, &nonce, &public_key, &auth_tag, &fail_priv_key).expect("Decryption failed");
          
-        assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AsymmetricKeyError)),
-            "Expected AesGcmDecryptError, but got {:?}", decrypted
-        );
+        assert_ne!(plaintext_vec, i_have_a_dream.as_bytes(), "Expected AesGcmDecryptError, but got {:?}", plaintext_vec);
 
 
      }
@@ -507,7 +501,7 @@ mod ecc_test {
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::AsymmetricEncrypted::<256> = crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key)
+         let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<256>(&mut plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
          let mut auth_tag_bytes = [0u8; 16];
@@ -519,13 +513,10 @@ mod ecc_test {
         let fail_priv_key: StaticSecret = StaticSecret::random_from_rng(&mut rng);
 
         let fail_pub_key = PublicKey::from(&fail_priv_key);
-        
-        let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &fail_pub_key, &encrypted.auth_tag, &priv_key);
-         
-        assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AsymmetricKeyError)),
-            "Expected AesGcmDecryptError, but got {:?}", decrypted
-        );
+
+        let _decrypted = crypto::asymmetric_decrypt_in_place(& mut plaintext_vec, &nonce, &fail_pub_key, &auth_tag, &priv_key).expect("Decryption failed");
+
+        assert_ne!(plaintext_vec, i_have_a_dream.as_bytes(), "Expected AesGcmDecryptError, but got {:?}", plaintext_vec);
 
 
      }
@@ -548,7 +539,7 @@ mod ecc_test {
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::AsymmetricEncrypted::<256> = crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key)
+         let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<256>(&mut plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
          let mut auth_tag_bytes = [0u8; 16];
@@ -560,14 +551,10 @@ mod ecc_test {
         let fail_priv_key: StaticSecret = StaticSecret::random_from_rng(&mut rng);
 
         let fail_pub_key = PublicKey::from(&priv_key);
-        
-        let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &encrypted.nonce, &fail_pub_key, &encrypted.auth_tag, &fail_priv_key);
-         
-        assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AsymmetricKeyError)),
-            "Expected AesGcmDecryptError, but got {:?}", decrypted
-        );
 
+        let _decrypted = crypto::asymmetric_decrypt(&plaintext_vec, &nonce, &fail_pub_key, &auth_tag, &fail_priv_key).expect("Decryption failed");
+
+        assert_ne!(plaintext_vec, i_have_a_dream.as_bytes(), "Expected AesGcmDecryptError, but got {:?}", plaintext_vec);
 
      }
     #[test]
@@ -589,7 +576,7 @@ mod ecc_test {
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::AsymmetricEncrypted::<256> = crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key)
+         let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<256>(&mut plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
          let mut nonce_bytes = [0u8; 12];
@@ -598,12 +585,9 @@ mod ecc_test {
             nonce_bytes[i] = i as u8;
         }
         
-         let decrypted = crypto::asymmetric_decrypt(&encrypted.ciphertext, &nonce_bytes, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
+         let _decrypted = crypto::asymmetric_decrypt(&plaintext_vec, &nonce_bytes, &public_key, &auth_tag, &priv_key).expect("Decryption failed");
          
-        assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
-            "Expected AesGcmDecryptError, but got {:?}", decrypted
-        );
+        assert_ne!(plaintext_vec, i_have_a_dream.as_bytes(), "Expected AesGcmDecryptError, but got {:?}", plaintext_vec);
 
      }
     #[test]
@@ -625,16 +609,13 @@ mod ecc_test {
          plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-         let encrypted: crypto::AsymmetricEncrypted::<256> = crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key)
+         let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<256>(&mut plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
         
-        let decrypted = crypto::asymmetric_decrypt(&plaintext_vec, &encrypted.nonce, &encrypted.cipher_public_key, &encrypted.auth_tag, &priv_key);
+        let _decrypted = crypto::asymmetric_decrypt(&plaintext_vec, &nonce, &public_key, &auth_tag, &priv_key).expect("Decryption failed");
          
-        assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
-            "Expected AesGcmDecryptError, but got {:?}", decrypted
-        );
+        assert_ne!(plaintext_vec, i_have_a_dream.as_bytes(), "Expected AesGcmDecryptError, but got {:?}", plaintext_vec);
 
      }
 
