@@ -1,16 +1,25 @@
 #![no_std]
 #![no_main]
 
-#[cfg(test)]
-#[embedded_test::tests]
-mod gcm_tests {
-    use core::module_path;
-    use core::{assert_eq};
-    use ectf_2026::secure_filesystem;
-    use uuid::Uuid;
-    use ectf_2026::flash::HwFlash;
+use panic_probe as _;
 
-    /* 
+#[cfg(test)]
+#[defmt_test::tests]
+mod gcm_tests {
+    use core::assert_eq;
+    use core::module_path;
+    use ectf_2026::crypto::asymmetric_decrypt_in_place;
+    use ectf_2026::flash::HwFlash;
+    use ectf_2026::permission;
+    use ectf_2026::permission::PermissionType;
+    use ectf_2026::secure_filesystem;
+    use ectf_2026::secure_filesystem::ProtectedFile;
+    use hex_literal::hex;
+    use uuid::Uuid;
+    use x25519_dalek::PublicKey;
+    use x25519_dalek::StaticSecret;
+
+    /*
     pub struct MockFlash {
         pub data: [u8; 1024 * 16],
     }
@@ -36,17 +45,16 @@ mod gcm_tests {
 
         fn erase(&mut self, address: u32) -> Result<(), FlashError> {
             let addr = address as usize;
-            self.data[addr..addr + 1024].fill(0xFF); 
+            self.data[addr..addr + 1024].fill(0xFF);
             Ok(())
         }
     }
     */
 
-
     #[test]
     fn test_secure_filesystem() {
-        let group_id: u16 = 1;
-        const FILE_UUID: Uuid = uuid::uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8");
+        let group_id: u16 = 0xbeef;
+        const FILE_UUID: [u8; 16] = hex!("67e5504410b1426f9247bb680e5fe0c8");
         let mut file_name = [0u8; 32];
 
         let input_name = "top_secret.bin";
@@ -54,38 +62,57 @@ mod gcm_tests {
 
         file_name[..name_bytes.len()].copy_from_slice(name_bytes);
 
-        let mut plaintext = heapless::Vec::<u8, 8192>::new();
-        plaintext.extend_from_slice(b"This is secret data").unwrap();
+        let mut plaintext = [0u8; 8192];
+        plaintext.copy_from_slice(b"This is secret data");
 
-        let my_protected_file = secure_filesystem::ProtectedFile::create(
-            group_id,
-            FILE_UUID,
+        let mut file = ProtectedFile::default();
+        secure_filesystem::ProtectedFile::create_in(
+            &mut file, group_id, FILE_UUID, &file_name, &plaintext,
+        )
+        .expect("Failed to create protected file");
+
+        secure_filesystem::ProtectedFile::digest(
+            file.group_id,
+            file.uuid,
             &file_name,
-            &plaintext
-        ).expect("Failed to create protected file");
+            &file.ciphertext,
+        );
 
-        secure_filesystem::ProtectedFile::digest(my_protected_file.group_id, my_protected_file.uuid, &file_name, &my_protected_file.contents);
+        file.verify_signature()
+            .expect("Signature verification failed!");
 
-        my_protected_file.verify_signature().expect("Signature verification failed!");
+        let read_key = StaticSecret::from(
+            permission::get_private_key(file.group_id, PermissionType::Read)
+                .expect("Couldn't get the key!"),
+        );
 
-        let decrypted_text = my_protected_file.decrypt().expect("Decryption failed!");
+        asymmetric_decrypt_in_place(
+            &mut file.ciphertext,
+            &file.nonce,
+            &PublicKey::from(file.ciphertext_public_key),
+            &file.auth_tag,
+            &read_key,
+        )
+        .expect("Decryption failed!");
 
-        assert_eq!(b"This is secret data", decrypted_text);
+        let decrypted = file.ciphertext;
+
+        assert_eq!(plaintext, decrypted);
 
         let mut hw_flash: HwFlash = HwFlash;
         let mut fs = secure_filesystem::Filesystem::init(&hw_flash);
 
+        fs.write_file(1, &file, FILE_UUID, &mut hw_flash)
+            .expect("Failed to write to slot!");
 
-        fs.write_file(1, &my_protected_file, FILE_UUID, &mut hw_flash).expect("Failed to write to slot!");
+        let read_back_file = fs.read_file(1, &hw_flash).expect("Failed to read file!");
 
-        let read_back_file = fs.read_file(1, &mut hw_flash).expect("Failed to read file!");
+        let read_back_file_metadata = fs
+            .get_file_metadata(1)
+            .expect("Failed to read file metadata");
 
-        let read_back_file_metadata = fs.get_file_metadata(1).expect("Failed to read file metadata");
-
-        assert_eq!(my_protected_file, read_back_file);
+        assert_eq!(file, read_back_file);
 
         assert_eq!(FILE_UUID, read_back_file_metadata.uuid);
-
     }
-
 }

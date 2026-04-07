@@ -1,8 +1,10 @@
 #![no_std]
 #![no_main]
 
+use panic_probe as _;
+
 #[cfg(test)]
-#[embedded_test::tests]
+#[defmt_test::tests]
 mod rng_tests {
     use defmt::println;
     use ectf_2026::random::SecureRng;

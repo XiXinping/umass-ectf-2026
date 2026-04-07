@@ -1,10 +1,10 @@
 #![no_std]
 #![no_main]
 
-use defmt_rtt as _;
+use panic_probe as _;
 
 #[cfg(test)]
-#[embedded_test::tests]
+#[defmt_test::tests]
 mod pin_tests {
     use core::{assert, matches};
     use ectf_2026::authentication;

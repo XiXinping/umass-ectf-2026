@@ -10,8 +10,6 @@ rustflags = [
 	"link-arg=-Tdefmt.x",
 	"-C",
 	"link-arg=-Tinterrupt_group.x",
-    "-C",
-    "link-arg=-Tembedded-test.x",
 ]
 
 [build]
