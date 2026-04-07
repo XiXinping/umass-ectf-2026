@@ -3,6 +3,7 @@
 
 use defmt_rtt as _;
 
+pub mod aes_hardware_accel;
 pub mod authentication;
 pub mod challenge_response;
 pub mod command;
