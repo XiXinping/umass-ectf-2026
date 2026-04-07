@@ -1,6 +1,7 @@
 //! Command dispatch and handlers for the eCTF host protocol.
 
 use defmt::println;
+use embassy_time::Instant;
 use heapless::{Vec, format};
 use x25519_dalek::{PublicKey, StaticSecret};
 use zerocopy::transmute;
@@ -389,7 +390,6 @@ fn cmd_write(
     };
 
     let t1 = unsafe { core::ptr::read_volatile(SYST_CVR) };
-    //
     if let Err(_e) = fs.write_file(slot, &file, uuid, flash) {
         // host.print_debug("write_file failed:");
         // host.print_hex_debug(&[e as u8]);
@@ -403,9 +403,25 @@ fn cmd_write(
     let create_us = (t0.wrapping_sub(t1) & 0x00FF_FFFF) / 32;
     let flash_us = (t1.wrapping_sub(t2) & 0x00FF_FFFF) / 32;
     host.print_debug("create_us:");
-    host.print_hex_debug(&create_us.to_le_bytes());
+    // host.print_hex_debug(&create_us.to_le_bytes());
+    host.print_debug(
+        &format!(
+            32; "Create: {}us",
+            create_us
+        )
+        .unwrap(),
+    );
+
     host.print_debug("flash_us:");
-    host.print_hex_debug(&flash_us.to_le_bytes());
+    host.print_debug(
+        &format!(
+            32; "Flash: {}us",
+            flash_us
+        )
+        .unwrap(),
+    );
+
+    // host.print_hex_debug(&flash_us.to_le_bytes());
     // Success — empty body
     let _ = host.write_packet(MsgType::Write, &[]);
 }
@@ -550,7 +566,11 @@ fn cmd_receive(
     host.print_debug("Verified signature of received file!");
 
     // Write received file to local flash
-    if fs.write_file(write_slot, &file, file.uuid, flash).is_err() {
+    let flash_write_start = Instant::now();
+    if fs
+        .write_file_timed(write_slot, &file, file.uuid, flash, flash_write_start)
+        .is_err()
+    {
         host.print_error("Writing received file failed");
         return;
     }
@@ -682,8 +702,9 @@ fn cmd_listen(
             // buf[resp_off..resp_off + 4].copy_from_slice(&nfiles.to_le_bytes());
 
             // let total_len = HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
-            let mut buf: Vec<u8, { size_of::<FileMetadata>() * MAX_FILE_COUNT }> = Vec::new();
+            // let mut buf: Vec<u8, { size_of::<FileMetadata>() * MAX_FILE_COUNT }> = Vec::new();
             // let _ = buf.extend_from_slice(&metadata.len().to_le_bytes());
+            let mut buf = [0u8; size_of::<FileMetadata>() * MAX_FILE_COUNT];
             if postcard::to_slice(&metadata, &mut buf).is_err() {
                 host.print_error("Failed to send file metadata");
                 return;

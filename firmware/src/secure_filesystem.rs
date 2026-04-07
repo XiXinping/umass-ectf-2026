@@ -8,7 +8,7 @@ use crate::crypto::{
 use crate::permission::{self, PermissionType, get_public_key};
 
 use core::mem;
-use defmt::info;
+use defmt::{info, println};
 use ed25519_dalek::Signature;
 use embassy_time::Instant;
 use hmac::{Hmac, Mac};
@@ -160,7 +160,8 @@ pub struct UnprotectedFile {
     pub plaintext: [u8; MAX_CONTENTS_SIZE],
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize)]
+#[repr(packed)]
+#[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct FileMetadata {
     pub slot: u8,
     pub group_id: u16,
@@ -452,7 +453,7 @@ impl Filesystem {
     ) -> Result<(), FsError> {
         let idx = Self::validate_slot(slot)?;
         if let Some(boot) = boot {
-            info!("[+{} ms] write_file inner start", elapsed_ms(boot));
+            println!("[+{} ms] write_file inner start", elapsed_ms(boot));
         }
 
         let length = file.as_bytes().len() as u16;
@@ -467,7 +468,7 @@ impl Filesystem {
         let fat_start = Instant::now();
         self.store_fat(flash)?;
         if let Some(boot) = boot {
-            info!(
+            println!(
                 "[+{} ms] write_file store_fat done (step={} ms)",
                 elapsed_ms(boot),
                 elapsed_ms(fat_start)
@@ -497,12 +498,12 @@ impl Filesystem {
         let write_start = Instant::now();
         flash.write(flash_addr, file.as_bytes())?;
         if let Some(boot) = boot {
-            info!(
+            println!(
                 "[+{} ms] write_file payload write done (step={} ms)",
                 elapsed_ms(boot),
                 elapsed_ms(write_start)
             );
-            info!("[+{} ms] write_file inner done", elapsed_ms(boot));
+            println!("[+{} ms] write_file inner done", elapsed_ms(boot));
         }
 
         Ok(())

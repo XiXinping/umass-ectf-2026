@@ -132,7 +132,8 @@ fn are_sectors_unprotected() -> bool {
 #[inline(never)]
 #[unsafe(link_section = ".data")]
 pub fn flash_simple_erase_page(address: u32) -> Result<(), FsError> {
-    clear_status_blocking();
+    // clear_status_blocking();
+    clear_status();
     unprotect_sectors();
     if !are_sectors_unprotected() {
         return Err(FsError::FlashWriteError);
@@ -198,40 +199,41 @@ pub fn flash_simple_write(address: u32, data: &[u8]) -> Result<(), FsError> {
     // );
 
     let mut dump_offset: usize = 0;
-    while dump_offset < padded_byte_len {
-        let b0 = data_byte_or_pad(data, dump_offset);
-        let b1 = data_byte_or_pad(data, dump_offset + 1);
-        let b2 = data_byte_or_pad(data, dump_offset + 2);
-        let b3 = data_byte_or_pad(data, dump_offset + 3);
-        let b4 = data_byte_or_pad(data, dump_offset + 4);
-        let b5 = data_byte_or_pad(data, dump_offset + 5);
-        let b6 = data_byte_or_pad(data, dump_offset + 6);
-        let b7 = data_byte_or_pad(data, dump_offset + 7);
+    // while dump_offset < padded_byte_len {
+    //     let b0 = data_byte_or_pad(data, dump_offset);
+    //     let b1 = data_byte_or_pad(data, dump_offset + 1);
+    //     let b2 = data_byte_or_pad(data, dump_offset + 2);
+    //     let b3 = data_byte_or_pad(data, dump_offset + 3);
+    //     let b4 = data_byte_or_pad(data, dump_offset + 4);
+    //     let b5 = data_byte_or_pad(data, dump_offset + 5);
+    //     let b6 = data_byte_or_pad(data, dump_offset + 6);
+    //     let b7 = data_byte_or_pad(data, dump_offset + 7);
+    //
+    //     // info!(
+    //     //     "[+{} ms] flash_simple_write prebuf chunk={} addr=0x{:08x} bytes={:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+    //     //     elapsed_ms(op_start),
+    //     //     dump_offset / 8,
+    //     //     address + dump_offset as u32,
+    //     //     b0,
+    //     //     b1,
+    //     //     b2,
+    //     //     b3,
+    //     //     b4,
+    //     //     b5,
+    //     //     b6,
+    //     //     b7
+    //     // );
+    //     //
+    //     dump_offset += 8;
+    // }
 
-        // info!(
-        //     "[+{} ms] flash_simple_write prebuf chunk={} addr=0x{:08x} bytes={:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
-        //     elapsed_ms(op_start),
-        //     dump_offset / 8,
-        //     address + dump_offset as u32,
-        //     b0,
-        //     b1,
-        //     b2,
-        //     b3,
-        //     b4,
-        //     b5,
-        //     b6,
-        //     b7
-        // );
-        //
-        dump_offset += 8;
-    }
+    clear_status_blocking();
 
     // Program in 8-byte (64-bit flash-word) chunks directly from source
     let mut offset: usize = 0;
     while offset < padded_byte_len {
         // let chunk_start = Instant::now();
 
-        clear_status();
         // info!(
         //     "[+{} ms] flash_simple_write chunk={} clear_status done (step={} ms)",
         //     elapsed_ms(op_start),

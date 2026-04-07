@@ -1,12 +1,10 @@
 use crate::random::SecureRng;
-use crate::serialization::serde_x25519_pubkey;
 use aes_gcm::{
     Aes128Gcm, Key, Nonce,
     aead::{AeadInPlace, KeyInit},
 };
 use heapless::Vec;
 use hkdf::Hkdf;
-use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
@@ -61,15 +59,12 @@ pub enum AuthError {
 pub struct AsymmetricEncrypted<const N: usize> {
     pub ciphertext: [u8; N],
     pub nonce: [u8; 12],
-    // #[serde(with = "serde_x25519_pubkey")]
     pub cipher_public_key: PublicKey,
     pub auth_tag: [u8; AUTH_TAG_SIZE],
 }
 
-#[derive(Serialize, Deserialize)]
 pub struct AsymmetricEncryptedMetadata {
     pub nonce: [u8; 12],
-    #[serde(with = "serde_x25519_pubkey")]
     pub cipher_public_key: PublicKey,
     pub auth_tag: [u8; AUTH_TAG_SIZE],
 }
