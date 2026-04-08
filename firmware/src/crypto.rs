@@ -4,7 +4,8 @@
 //! (see `aes_hardware_accel`). Hybrid (asymmetric) encryption layers
 //! X25519 ECDH + HKDF-SHA256 key derivation on top of the hardware GCM.
 
-use crate::aes_hardware_accel::GcmEngine;
+use crate::{GLOBAL_PUB_KEY, GLOBAL_RNG};
+use crate::{GLOBAL_SECRET, aes_hardware_accel::GcmEngine};
 use crate::random::SecureRng;
 use heapless::Vec;
 use hkdf::Hkdf;
@@ -451,21 +452,53 @@ pub fn asymmetric_encrypt_in_place<const N: usize>(
     plaintext: &mut [u8],
     public_key: &PublicKey,
 ) -> Result<([u8; NONCE_SIZE], [u8; AUTH_TAG_SIZE], PublicKey), CryptoError> {
-    let mut rng = SecureRng::new().map_err(|_| CryptoError::RngError)?;
-    let ephemeral_secret = EphemeralSecret::random_from_rng(&mut rng);
-    let cipher_public_key = PublicKey::from(&ephemeral_secret);
+    // Can just generate 32 bytes using random_bytes() and use that as the ephemeral secret
+    // let mut rng = SecureRng::new().map_err(|_| CryptoError::RngError)?;
 
-    let shared_secret = ephemeral_secret.diffie_hellman(public_key);
+    // let ephemeral_secret = EphemeralSecret::random_from_rng(&mut rng);
+
+    // Creates a public key specifically for this batch of ciphertext. This public key gets sent
+    // along with the ciphertext and can be used to derive the secret key to decrypt it.
+
+    // let cipher_public_key = PublicKey::from(&ephemeral_secret);
+
+    let secret = critical_section::with(|cs| {
+        GLOBAL_SECRET
+            .borrow(cs)
+            .borrow_mut()
+            .take()                          // moves it out, leaves None behind
+            .expect("crypto not initialised")
+    });
+
+
+    let shared_secret = secret.diffie_hellman(public_key);
     let hk = Hkdf::<Sha256>::new(None, shared_secret.as_bytes());
     let mut aes_key: [u8; 16] = [0; 16];
     hk.expand(b"aes-gcm key", &mut aes_key)
         .map_err(|_| CryptoError::AsymmetricKeyError)?;
 
-    let nonce: [u8; 12] = rng.random_array().map_err(|_| CryptoError::RngError)?;
+    let nonce: [u8; 12] = critical_section::with(|cs| {
+        GLOBAL_RNG
+            .borrow(cs)
+            .borrow_mut()
+            .as_mut()
+            .expect("rng not initialised")
+            .random_array()
+    })
+    .map_err(|_| CryptoError::RngError)?;
 
     let auth_tag = aes_gcm_encrypt_in_place(plaintext, &aes_key, &nonce, &[])
         .map_err(|_| CryptoError::AesGcmEncryptError)?;
-    Ok((nonce, auth_tag, cipher_public_key))
+    let pub_key = critical_section::with(|cs| {
+        *GLOBAL_PUB_KEY
+            .borrow(cs)
+            .borrow()
+            .as_ref()
+            .expect("pub key not initialised")
+    });
+
+
+    Ok((nonce, auth_tag, pub_key))
 }
 
 /// Decrypts ciphertext produced by hybrid encryption. Recovers the

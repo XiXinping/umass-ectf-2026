@@ -2,6 +2,9 @@
 #![no_main]
 
 use defmt::*;
+use ectf_2026::GLOBAL_PUB_KEY;
+use ectf_2026::GLOBAL_RNG;
+use ectf_2026::GLOBAL_SECRET;
 use ectf_2026::authentication::verify_pin;
 use ectf_2026::command;
 use ectf_2026::command::TRANSFER_PAYLOAD_SIZE;
@@ -13,6 +16,7 @@ use ectf_2026::secrets::PIN_SALT;
 use ectf_2026::secure_filesystem::Filesystem;
 use embassy_mspm0::peripherals::SYSCTL;
 use embassy_mspm0::uart::{Config, Uart};
+use x25519_dalek::EphemeralSecret;
 use x25519_dalek::PublicKey;
 use x25519_dalek::StaticSecret;
 
@@ -59,6 +63,16 @@ fn main() -> ! {
 
     let pin_attempt = "abcdef";
     verify_pin(pin_attempt.as_bytes(), &PIN_SALT, &PIN_HASH);
+
+    let mut rng = SecureRng::new().expect("RNG init failed");
+    let secret  = EphemeralSecret::random_from_rng(&mut rng);
+    let pub_key = PublicKey::from(&secret);
+
+    critical_section::with(|cs: critical_section::CriticalSection<'_>| {
+        *GLOBAL_RNG    .borrow(cs).borrow_mut() = Some(rng);
+        *GLOBAL_SECRET .borrow(cs).borrow_mut() = Some(secret);
+        *GLOBAL_PUB_KEY.borrow(cs).borrow_mut() = Some(pub_key);
+    });
 
     loop {
         let mut buf = [0u8; MAX_MSG_SIZE];

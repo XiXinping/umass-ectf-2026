@@ -2,10 +2,10 @@
 // provides a secure interface for file operations
 
 use crate::crypto::{
-    AUTH_TAG_SIZE, NONCE_SIZE, PUBLIC_KEY_SIZE, SIGNATURE_SIZE, asymmetric_decrypt_in_place,
-    asymmetric_encrypt_in_place, ecc_sign_file_digest, ecc_verify_file_digest,
+    AUTH_TAG_SIZE, CryptoError, NONCE_SIZE, PUBLIC_KEY_SIZE, SIGNATURE_SIZE, asymmetric_decrypt_in_place, asymmetric_encrypt_in_place, ecc_sign_file_digest, ecc_verify_file_digest
 };
 use crate::permission::{self, PermissionType, get_public_key};
+use crate::random::SecureRng;
 
 use core::mem;
 use defmt::{info, println};
@@ -14,7 +14,7 @@ use embassy_time::Instant;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use x25519_dalek::{PublicKey, StaticSecret};
+use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, transmute, transmute_mut};
 
 // ─── Constants (must match C functional spec) ───────────────────────
@@ -270,6 +270,7 @@ impl ProtectedFile {
             .ok_or(FileError::InvalidGroupId)?;
 
         out.ciphertext[..contents.len()].copy_from_slice(contents);
+
 
         let (nonce, auth_tag, cipher_public_key) =
             asymmetric_encrypt_in_place::<MAX_CONTENTS_SIZE>(
