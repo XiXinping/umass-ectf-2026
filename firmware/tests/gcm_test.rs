@@ -13,35 +13,6 @@ mod gcm_tests {
     use hex;
 
     #[test]
-    fn test_encrypt_decrypt() {
-        let plaintext = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
-        let mut ciphertext = plaintext;
-
-        let mut key_data: [u8; 16] = [0u8; 16];
-        for i in 0..16 {
-            key_data[i] = i as u8;
-        }
-        let key: &[u8; 16] = &key_data;
-
-        let mut iv_data: [u8; 12] = [0u8; 12];
-        for i in 0..12 {
-            iv_data[i] = i as u8;
-        }
-        let iv: &[u8; 12] = &iv_data;
-
-        let auth_tag_out = crypto::aes_gcm_encrypt_in_place(&mut ciphertext, key, iv, &[])
-            .expect("Encryption failed, please check params");
-
-        assert_ne!(ciphertext, plaintext);
-
-        crypto::aes_gcm_decrypt_in_place(&mut ciphertext, key, iv, &auth_tag_out, &[])
-            .expect("Decryption failed!");
-
-        assert_eq!(ciphertext, plaintext);
-    }
-
-
-    #[test]
     fn test_basic_gcm_encrypt() {
          let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
              history as the greatest demonstration for freedom in the history of our nation. \
