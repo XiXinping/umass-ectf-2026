@@ -10,7 +10,11 @@ use ectf_2026::command;
 use ectf_2026::command::TRANSFER_PAYLOAD_SIZE;
 use ectf_2026::flash::HwFlash;
 use ectf_2026::host::HostUart;
+use ectf_2026::permission::SharedSecrets;
+use ectf_2026::permission::gen_shared_secrets;
 use ectf_2026::random::SecureRng;
+use ectf_2026::secrets::NUM_PERMS;
+use ectf_2026::secrets::PERMISSIONS;
 use ectf_2026::secrets::PIN_HASH;
 use ectf_2026::secrets::PIN_SALT;
 use ectf_2026::secure_filesystem::Filesystem;
@@ -65,13 +69,15 @@ fn main() -> ! {
     verify_pin(pin_attempt.as_bytes(), &PIN_SALT, &PIN_HASH);
 
     let mut rng = SecureRng::new().expect("RNG init failed");
-    let secret  = EphemeralSecret::random_from_rng(&mut rng);
+    let secret = StaticSecret::random_from_rng(&mut rng);
     let pub_key = PublicKey::from(&secret);
+    let shared_secrets: [SharedSecrets; NUM_PERMS] = gen_shared_secrets(secret);
 
     critical_section::with(|cs: critical_section::CriticalSection<'_>| {
-        *GLOBAL_RNG    .borrow(cs).borrow_mut() = Some(rng);
-        *GLOBAL_SECRET .borrow(cs).borrow_mut() = Some(secret);
+        *GLOBAL_RNG.borrow(cs).borrow_mut() = Some(rng);
+        *GLOBAL_SECRET.borrow(cs).borrow_mut() = Some(secret);
         *GLOBAL_PUB_KEY.borrow(cs).borrow_mut() = Some(pub_key);
+        *GLOBAL_SHARED_SECRETS.borrow(cs).borrow_mut() = Some(shared_secrets);
     });
 
     loop {

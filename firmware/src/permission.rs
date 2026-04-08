@@ -1,4 +1,7 @@
-use crate::secrets::PERMISSIONS;
+use heapless::Vec;
+use x25519_dalek::{PublicKey, SharedSecret, StaticSecret};
+
+use crate::secrets::{NUM_PERMS, PERMISSIONS};
 
 #[derive(Clone, Copy)]
 pub struct KeyPair {
@@ -28,6 +31,12 @@ pub struct GroupPermission {
     pub write_perm: bool,
     pub receive_perm: bool,
     pub keys: KeyPairSet,
+}
+
+pub struct SharedSecrets {
+    group_id: u16,
+    read_secret: SharedSecret,
+    receive_secret: SharedSecret,
 }
 
 pub fn get_private_key(group_id: u16, permission_type: PermissionType) -> Option<[u8; 32]> {
@@ -70,4 +79,21 @@ pub fn has_permission(group_id: u16, permission_type: PermissionType) -> bool {
         }
     }
     false
+}
+
+pub fn gen_shared_secrets(secret: StaticSecret) -> [SharedSecrets; NUM_PERMS] {
+    let mut secret_list: Vec<SharedSecrets, NUM_PERMS> = Vec::new();
+    for group in PERMISSIONS {
+        let read_pub_key = get_public_key(group.group_id, PermissionType::Read).unwrap();
+        let recv_pub_key = get_public_key(group.group_id, PermissionType::Receive).unwrap();
+        let _ = secret_list.push(SharedSecrets {
+            group_id: group.group_id,
+            read_secret: secret.diffie_hellman(&PublicKey::from(read_pub_key)),
+            receive_secret: secret.diffie_hellman(&PublicKey::from(recv_pub_key)),
+        });
+    }
+    match secret_list.into_array() {
+        Ok(list) => list,
+        Err(_) => panic!(),
+    }
 }

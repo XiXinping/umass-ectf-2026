@@ -4,9 +4,9 @@
 //! (see `aes_hardware_accel`). Hybrid (asymmetric) encryption layers
 //! X25519 ECDH + HKDF-SHA256 key derivation on top of the hardware GCM.
 
+use crate::random::SecureRng;
 use crate::{GLOBAL_PUB_KEY, GLOBAL_RNG};
 use crate::{GLOBAL_SECRET, aes_hardware_accel::GcmEngine};
-use crate::random::SecureRng;
 use heapless::Vec;
 use hkdf::Hkdf;
 use sha2::Sha256;
@@ -237,7 +237,11 @@ fn run_pipeline(eng: &GcmEngine, src: &[u8], dst: &mut [u8], len: usize) -> bool
         }
         let result = eng.collect_data_block();
         let roff = dequeued * GCM_BLOCK_BYTES;
-        let rlen = if dequeued < full { GCM_BLOCK_BYTES } else { tail };
+        let rlen = if dequeued < full {
+            GCM_BLOCK_BYTES
+        } else {
+            tail
+        };
         unpack_block(&result, &mut dst[roff..roff + rlen]);
         dequeued += 1;
 
@@ -265,7 +269,11 @@ fn run_pipeline(eng: &GcmEngine, src: &[u8], dst: &mut [u8], len: usize) -> bool
         }
         let result = eng.collect_data_block();
         let roff = dequeued * GCM_BLOCK_BYTES;
-        let rlen = if dequeued < full { GCM_BLOCK_BYTES } else { tail };
+        let rlen = if dequeued < full {
+            GCM_BLOCK_BYTES
+        } else {
+            tail
+        };
         unpack_block(&result, &mut dst[roff..roff + rlen]);
         dequeued += 1;
     }
@@ -316,7 +324,13 @@ pub fn aes_gcm_encrypt<const N: usize>(
 
     eng.load_key_128(key);
 
-    if !begin_gcm_session(&eng, iv, true, plaintext.len() as u32, associated_data.len() as u32) {
+    if !begin_gcm_session(
+        &eng,
+        iv,
+        true,
+        plaintext.len() as u32,
+        associated_data.len() as u32,
+    ) {
         return Err(CryptoError::HardwareTimeout);
     }
 
@@ -349,7 +363,13 @@ pub fn aes_gcm_encrypt_in_place(
 
     eng.load_key_128(key);
 
-    if !begin_gcm_session(&eng, iv, true, plaintext.len() as u32, associated_data.len() as u32) {
+    if !begin_gcm_session(
+        &eng,
+        iv,
+        true,
+        plaintext.len() as u32,
+        associated_data.len() as u32,
+    ) {
         return Err(CryptoError::HardwareTimeout);
     }
 
@@ -388,7 +408,13 @@ pub fn aes_gcm_decrypt<const N: usize>(
 
     eng.load_key_128(key);
 
-    if !begin_gcm_session(&eng, iv, false, ciphertext.len() as u32, associated_data.len() as u32) {
+    if !begin_gcm_session(
+        &eng,
+        iv,
+        false,
+        ciphertext.len() as u32,
+        associated_data.len() as u32,
+    ) {
         return Err(CryptoError::HardwareTimeout);
     }
 
@@ -421,7 +447,13 @@ pub fn aes_gcm_decrypt_in_place(
 
     eng.load_key_128(key);
 
-    if !begin_gcm_session(&eng, iv, false, ciphertext.len() as u32, associated_data.len() as u32) {
+    if !begin_gcm_session(
+        &eng,
+        iv,
+        false,
+        ciphertext.len() as u32,
+        associated_data.len() as u32,
+    ) {
         return Err(CryptoError::HardwareTimeout);
     }
 
@@ -466,10 +498,9 @@ pub fn asymmetric_encrypt_in_place<const N: usize>(
         GLOBAL_SECRET
             .borrow(cs)
             .borrow_mut()
-            .take()                          // moves it out, leaves None behind
-            .expect("crypto not initialised")
+            .take() // moves it out, leaves None behind
+            .expect("crypto not initialized")
     });
-
 
     let shared_secret = secret.diffie_hellman(public_key);
     let hk = Hkdf::<Sha256>::new(None, shared_secret.as_bytes());
@@ -496,7 +527,6 @@ pub fn asymmetric_encrypt_in_place<const N: usize>(
             .as_ref()
             .expect("pub key not initialised")
     });
-
 
     Ok((nonce, auth_tag, pub_key))
 }
@@ -570,3 +600,4 @@ pub fn ecc_verify_file_digest(
         .verify(digest, signature)
         .map_err(|_| AuthError::VerificationFailed)
 }
+

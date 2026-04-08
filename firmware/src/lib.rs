@@ -2,9 +2,11 @@
 #![no_main]
 
 use defmt_rtt as _;
-use x25519_dalek::{EphemeralSecret, PublicKey};
+use x25519_dalek::{PublicKey, StaticSecret};
 
+use crate::permission::SharedSecrets;
 use crate::random::SecureRng;
+use crate::secrets::NUM_PERMS;
 
 use core::cell::RefCell;
 use critical_section::Mutex;
@@ -23,10 +25,11 @@ pub mod secrets;
 pub mod secure_filesystem;
 pub mod serialization;
 
-pub static GLOBAL_SECRET:  Mutex<RefCell<Option<EphemeralSecret>>> = Mutex::new(RefCell::new(None));
-pub static GLOBAL_PUB_KEY: Mutex<RefCell<Option<PublicKey>>>       = Mutex::new(RefCell::new(None));
-pub static GLOBAL_RNG:     Mutex<RefCell<Option<SecureRng>>>       = Mutex::new(RefCell::new(None));
-
+pub static GLOBAL_SECRET: Mutex<RefCell<Option<StaticSecret>>> = Mutex::new(RefCell::new(None));
+pub static GLOBAL_PUB_KEY: Mutex<RefCell<Option<PublicKey>>> = Mutex::new(RefCell::new(None));
+pub static GLOBAL_RNG: Mutex<RefCell<Option<SecureRng>>> = Mutex::new(RefCell::new(None));
+pub static GLOBAL_SHARED_SECRETS: Mutex<RefCell<Option<[SharedSecrets; NUM_PERMS]>>> =
+    Mutex::new(RefCell::new(None));
 
 #[cfg(test)]
 #[panic_handler]
