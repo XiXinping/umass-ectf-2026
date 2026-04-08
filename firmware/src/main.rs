@@ -5,6 +5,7 @@ use defmt::*;
 use ectf_2026::GLOBAL_PUB_KEY;
 use ectf_2026::GLOBAL_RNG;
 use ectf_2026::GLOBAL_SECRET;
+use ectf_2026::GLOBAL_SHARED_SECRETS;
 use ectf_2026::authentication::verify_pin;
 use ectf_2026::command;
 use ectf_2026::command::TRANSFER_PAYLOAD_SIZE;
@@ -71,13 +72,13 @@ fn main() -> ! {
     let mut rng = SecureRng::new().expect("RNG init failed");
     let secret = StaticSecret::random_from_rng(&mut rng);
     let pub_key = PublicKey::from(&secret);
-    let shared_secrets: [SharedSecrets; NUM_PERMS] = gen_shared_secrets(secret);
+    // let shared_secrets: [SharedSecrets; NUM_PERMS] = gen_shared_secrets(secret.clone());
 
     critical_section::with(|cs: critical_section::CriticalSection<'_>| {
         *GLOBAL_RNG.borrow(cs).borrow_mut() = Some(rng);
-        *GLOBAL_SECRET.borrow(cs).borrow_mut() = Some(secret);
+        *GLOBAL_SECRET.borrow(cs).borrow_mut() = Some(secret.clone());
         *GLOBAL_PUB_KEY.borrow(cs).borrow_mut() = Some(pub_key);
-        *GLOBAL_SHARED_SECRETS.borrow(cs).borrow_mut() = Some(shared_secrets);
+        // *GLOBAL_SHARED_SECRETS.borrow(cs).borrow_mut() = Some(shared_secrets);
     });
 
     loop {

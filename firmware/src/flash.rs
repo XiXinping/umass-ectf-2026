@@ -8,7 +8,6 @@
 //! a flash bank while that bank is being erased or programmed.
 
 use core::ptr;
-use defmt::info;
 use embassy_time::Instant;
 
 use crate::secure_filesystem::{Flash, FsError};
@@ -181,13 +180,13 @@ fn data_byte_or_pad(data: &[u8], idx: usize) -> u8 {
 #[inline(never)]
 #[unsafe(link_section = ".data")]
 pub fn flash_simple_write(address: u32, data: &[u8]) -> Result<(), FsError> {
-    let op_start = Instant::now();
+    let _op_start = Instant::now();
 
     // Round size up to an even number of 32-bit words (8-byte flash word).
     let size = data.len();
     let size_32b = ((size + 3) / 4 + 1) & !1;
     let padded_byte_len = size_32b * 4;
-    let chunk_count = padded_byte_len / 8;
+    let _chunk_count = padded_byte_len / 8;
 
     // info!(
     //     "[+{} ms] flash_simple_write start addr=0x{:08x} size={} padded={} chunks={}",
@@ -198,7 +197,7 @@ pub fn flash_simple_write(address: u32, data: &[u8]) -> Result<(), FsError> {
     //     chunk_count
     // );
 
-    let mut dump_offset: usize = 0;
+    let _dump_offset: usize = 0;
     // while dump_offset < padded_byte_len {
     //     let b0 = data_byte_or_pad(data, dump_offset);
     //     let b1 = data_byte_or_pad(data, dump_offset + 1);
@@ -289,7 +288,7 @@ pub fn flash_simple_write(address: u32, data: &[u8]) -> Result<(), FsError> {
         //     offset / 8
         // );
 
-        let wait_start = Instant::now();
+        let _wait_start = Instant::now();
 
         if !wait_cmd_done() {
             // // info!(

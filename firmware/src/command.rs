@@ -1,6 +1,5 @@
 //! Command dispatch and handlers for the eCTF host protocol.
 
-use defmt::println;
 use embassy_time::Instant;
 use heapless::{Vec, format};
 use x25519_dalek::{PublicKey, StaticSecret};

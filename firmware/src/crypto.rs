@@ -4,13 +4,12 @@
 //! (see `aes_hardware_accel`). Hybrid (asymmetric) encryption layers
 //! X25519 ECDH + HKDF-SHA256 key derivation on top of the hardware GCM.
 
-use crate::random::SecureRng;
 use crate::{GLOBAL_PUB_KEY, GLOBAL_RNG};
 use crate::{GLOBAL_SECRET, aes_hardware_accel::GcmEngine};
 use heapless::Vec;
 use hkdf::Hkdf;
 use sha2::Sha256;
-use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
+use x25519_dalek::{PublicKey, StaticSecret};
 
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 
@@ -600,4 +599,3 @@ pub fn ecc_verify_file_digest(
         .verify(digest, signature)
         .map_err(|_| AuthError::VerificationFailed)
 }
-
