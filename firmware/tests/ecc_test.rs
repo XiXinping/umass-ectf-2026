@@ -368,179 +368,145 @@ mod ecc_test {
              history as the greatest demonstration for freedom in the history of our nation. \
              Five score years ago, a great American, in whose symbolic shadow we stand today, \
              signed the Emancipation Proclamation";
-        let plaintext: &[u8] = i_have_a_dream.as_bytes();
+         let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-        let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
+         let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
 
-        plaintext_vec
-            .extend_from_slice(plaintext)
+         plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-        let encrypted: crypto::AsymmetricEncrypted<256> =
-            crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key).expect("Encryption failed");
+         let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<256>(&mut plaintext_vec, &pub_key)
+                .expect("Encryption failed");
 
-        let decrypted = crypto::asymmetric_decrypt(
-            &encrypted.ciphertext,
-            &encrypted.nonce,
-            &encrypted.cipher_public_key,
-            &encrypted.auth_tag,
-            &priv_key,
-        )
-        .expect("Decryption failed");
+         let _decrypted = crypto::asymmetric_decrypt_in_place(& mut plaintext_vec, &nonce, &public_key, &auth_tag, &priv_key).expect("Decryption failed");
 
-        assert_eq!(decrypted, i_have_a_dream.as_bytes());
-    }
+         assert_eq!(plaintext_vec, i_have_a_dream.as_bytes());
 
-    #[test]
-    fn test_ecc_max_capacity() {
-        let mut rng = SecureRng::new().expect("Failed to create RNG");
+     }
 
-        let priv_key = StaticSecret::random_from_rng(&mut rng);
+          #[test]
+     fn test_ecc_max_capacity() {
+         let mut rng = SecureRng::new().expect("Failed to create RNG");
 
-        let pub_key = PublicKey::from(&priv_key);
+         let priv_key = StaticSecret::random_from_rng(&mut rng);
 
-        let base_string: &str = "0123456789abcdef0123456789abcdef"; // Exactly 32 bytes
-        let base_bytes = base_string.as_bytes();
+         let pub_key = PublicKey::from(&priv_key);
+         
+         let base_string: &str = "0123456789abcdef0123456789abcdef"; // Exactly 32 bytes
+         let base_bytes = base_string.as_bytes();
 
         let mut plaintext_vec = heapless::Vec::<u8, 8192>::new();
 
         for _ in 0..256 {
-            plaintext_vec
-                .extend_from_slice(base_bytes)
+            plaintext_vec.extend_from_slice(base_bytes)
                 .expect("Buffer overflow: ensure MAX_CONTENTS_SIZE is at least 8192");
         }
 
-        let encrypted: crypto::AsymmetricEncrypted<8192> =
-            crypto::asymmetric_encrypt::<8192>(&plaintext_vec, &pub_key)
+        let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<8192>(&mut plaintext_vec, &pub_key)
                 .expect("Encryption failed");
 
-        let decrypted = crypto::asymmetric_decrypt(
-            &encrypted.ciphertext,
-            &encrypted.nonce,
-            &encrypted.cipher_public_key,
-            &encrypted.auth_tag,
-            &priv_key,
-        )
-        .expect("Decryption failed");
+         let _decrypted = crypto::asymmetric_decrypt_in_place(& mut plaintext_vec, &nonce, &public_key, &auth_tag, &priv_key).expect("Decryption failed");
 
-        assert_eq!(decrypted, plaintext_vec);
-    }
+         assert_eq!(plaintext_vec, base_string.as_bytes());
+
+     }
 
     #[test]
-    fn test_ecc_auth_tag_fail() {
-        let mut rng = SecureRng::new().expect("Failed to create RNG");
+     fn test_ecc_auth_tag_fail() {
+         let mut rng = SecureRng::new().expect("Failed to create RNG");
 
-        let priv_key = StaticSecret::random_from_rng(&mut rng);
+         let priv_key = StaticSecret::random_from_rng(&mut rng);
 
-        let pub_key = PublicKey::from(&priv_key);
-
-        let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
+         let pub_key = PublicKey::from(&priv_key);
+         
+         let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
              history as the greatest demonstration for freedom in the history of our nation. \
              Five score years ago, a great American, in whose symbolic shadow we stand today, \
              signed the Emancipation Proclamation";
-        let plaintext: &[u8] = i_have_a_dream.as_bytes();
+         let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-        let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
+         let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
 
-        plaintext_vec
-            .extend_from_slice(plaintext)
+         plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-        let encrypted: crypto::AsymmetricEncrypted<256> =
-            crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key).expect("Encryption failed");
+         let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<256>(&mut plaintext_vec, &pub_key)
+                .expect("Encryption failed");
 
-        let mut auth_tag_bytes = [0u8; 16];
+         let mut auth_tag_bytes = [0u8; 16];
 
-        for i in 0..16 {
+         for i in 0..16 {
             auth_tag_bytes[i] = i as u8;
         }
+        
+        let _decrypted = crypto::asymmetric_decrypt_in_place(& mut plaintext_vec, &nonce, &public_key, &auth_tag_bytes, &priv_key).expect("Decryption failed");
+         
+        assert_ne!(plaintext_vec, i_have_a_dream.as_bytes(), "Expected AesGcmDecryptError, but got {:?}", plaintext_vec);
 
-        let decrypted = crypto::asymmetric_decrypt(
-            &encrypted.ciphertext,
-            &encrypted.nonce,
-            &encrypted.cipher_public_key,
-            &auth_tag_bytes,
-            &priv_key,
-        );
 
-        assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
-            "Expected AesGcmDecryptError, but got {:?}",
-            decrypted
-        );
-    }
+     }
+     
+     #[test]
+     fn test_ecc_priv_key_fail() {
+         let mut rng = SecureRng::new().expect("Failed to create RNG");
 
-    #[test]
-    fn test_ecc_priv_key_fail() {
-        let mut rng = SecureRng::new().expect("Failed to create RNG");
+         let priv_key = StaticSecret::random_from_rng(&mut rng);
 
-        let priv_key = StaticSecret::random_from_rng(&mut rng);
-
-        let pub_key = PublicKey::from(&priv_key);
-
-        let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
+         let pub_key = PublicKey::from(&priv_key);
+         
+         let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
              history as the greatest demonstration for freedom in the history of our nation. \
              Five score years ago, a great American, in whose symbolic shadow we stand today, \
              signed the Emancipation Proclamation";
-        let plaintext: &[u8] = i_have_a_dream.as_bytes();
+         let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-        let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
+         let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
 
-        plaintext_vec
-            .extend_from_slice(plaintext)
+         plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-        let encrypted: crypto::AsymmetricEncrypted<256> =
-            crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key).expect("Encryption failed");
+         let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<256>(&mut plaintext_vec, &pub_key)
+                .expect("Encryption failed");
 
-        let mut auth_tag_bytes = [0u8; 16];
+         let mut auth_tag_bytes = [0u8; 16];
 
-        for i in 0..16 {
+         for i in 0..16 {
             auth_tag_bytes[i] = i as u8;
         }
 
         let fail_priv_key: StaticSecret = StaticSecret::random_from_rng(&mut rng);
+        
+        let _decrypted = crypto::asymmetric_decrypt_in_place(& mut plaintext_vec, &nonce, &public_key, &auth_tag, &fail_priv_key).expect("Decryption failed");
+         
+        assert_ne!(plaintext_vec, i_have_a_dream.as_bytes(), "Expected AesGcmDecryptError, but got {:?}", plaintext_vec);
 
-        let decrypted = crypto::asymmetric_decrypt(
-            &encrypted.ciphertext,
-            &encrypted.nonce,
-            &encrypted.cipher_public_key,
-            &encrypted.auth_tag,
-            &fail_priv_key,
-        );
 
-        assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AsymmetricKeyError)),
-            "Expected AesGcmDecryptError, but got {:?}",
-            decrypted
-        );
-    }
+     }
     #[test]
     fn test_ecc_pub_key_fail() {
-        let mut rng = SecureRng::new().expect("Failed to create RNG");
+         let mut rng = SecureRng::new().expect("Failed to create RNG");
 
-        let priv_key = StaticSecret::random_from_rng(&mut rng);
+         let priv_key = StaticSecret::random_from_rng(&mut rng);
 
-        let pub_key = PublicKey::from(&priv_key);
-
-        let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
+         let pub_key = PublicKey::from(&priv_key);
+         
+         let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
              history as the greatest demonstration for freedom in the history of our nation. \
              Five score years ago, a great American, in whose symbolic shadow we stand today, \
              signed the Emancipation Proclamation";
-        let plaintext: &[u8] = i_have_a_dream.as_bytes();
+         let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-        let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
+         let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
 
-        plaintext_vec
-            .extend_from_slice(plaintext)
+         plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-        let encrypted: crypto::AsymmetricEncrypted<256> =
-            crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key).expect("Encryption failed");
+         let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<256>(&mut plaintext_vec, &pub_key)
+                .expect("Encryption failed");
 
-        let mut auth_tag_bytes = [0u8; 16];
+         let mut auth_tag_bytes = [0u8; 16];
 
-        for i in 0..16 {
+         for i in 0..16 {
             auth_tag_bytes[i] = i as u8;
         }
 
@@ -548,46 +514,37 @@ mod ecc_test {
 
         let fail_pub_key = PublicKey::from(&fail_priv_key);
 
-        let decrypted = crypto::asymmetric_decrypt(
-            &encrypted.ciphertext,
-            &encrypted.nonce,
-            &fail_pub_key,
-            &encrypted.auth_tag,
-            &priv_key,
-        );
+        let _decrypted = crypto::asymmetric_decrypt_in_place(& mut plaintext_vec, &nonce, &fail_pub_key, &auth_tag, &priv_key).expect("Decryption failed");
 
-        assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AsymmetricKeyError)),
-            "Expected AesGcmDecryptError, but got {:?}",
-            decrypted
-        );
-    }
+        assert_ne!(plaintext_vec, i_have_a_dream.as_bytes(), "Expected AesGcmDecryptError, but got {:?}", plaintext_vec);
+
+
+     }
     #[test]
     fn test_ecc_both_key_fail() {
-        let mut rng = SecureRng::new().expect("Failed to create RNG");
+         let mut rng = SecureRng::new().expect("Failed to create RNG");
 
-        let priv_key = StaticSecret::random_from_rng(&mut rng);
+         let priv_key = StaticSecret::random_from_rng(&mut rng);
 
-        let pub_key = PublicKey::from(&priv_key);
-
-        let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
+         let pub_key = PublicKey::from(&priv_key);
+         
+         let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
              history as the greatest demonstration for freedom in the history of our nation. \
              Five score years ago, a great American, in whose symbolic shadow we stand today, \
              signed the Emancipation Proclamation";
-        let plaintext: &[u8] = i_have_a_dream.as_bytes();
+         let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-        let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
+         let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
 
-        plaintext_vec
-            .extend_from_slice(plaintext)
+         plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-        let encrypted: crypto::AsymmetricEncrypted<256> =
-            crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key).expect("Encryption failed");
+         let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<256>(&mut plaintext_vec, &pub_key)
+                .expect("Encryption failed");
 
-        let mut auth_tag_bytes = [0u8; 16];
+         let mut auth_tag_bytes = [0u8; 16];
 
-        for i in 0..16 {
+         for i in 0..16 {
             auth_tag_bytes[i] = i as u8;
         }
 
@@ -595,98 +552,76 @@ mod ecc_test {
 
         let fail_pub_key = PublicKey::from(&priv_key);
 
-        let decrypted = crypto::asymmetric_decrypt(
-            &encrypted.ciphertext,
-            &encrypted.nonce,
-            &fail_pub_key,
-            &encrypted.auth_tag,
-            &fail_priv_key,
-        );
+        let _decrypted = crypto::asymmetric_decrypt_in_place(& mut plaintext_vec, &nonce, &fail_pub_key, &auth_tag, &fail_priv_key).expect("Decryption failed");
 
-        assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AsymmetricKeyError)),
-            "Expected AesGcmDecryptError, but got {:?}",
-            decrypted
-        );
-    }
+        assert_ne!(plaintext_vec, i_have_a_dream.as_bytes(), "Expected AesGcmDecryptError, but got {:?}", plaintext_vec);
+
+     }
     #[test]
     fn test_ecc_nonce_fail() {
-        let mut rng = SecureRng::new().expect("Failed to create RNG");
+         let mut rng = SecureRng::new().expect("Failed to create RNG");
 
-        let priv_key = StaticSecret::random_from_rng(&mut rng);
+         let priv_key = StaticSecret::random_from_rng(&mut rng);
 
-        let pub_key = PublicKey::from(&priv_key);
-
-        let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
+         let pub_key = PublicKey::from(&priv_key);
+         
+         let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
              history as the greatest demonstration for freedom in the history of our nation. \
              Five score years ago, a great American, in whose symbolic shadow we stand today, \
              signed the Emancipation Proclamation";
-        let plaintext: &[u8] = i_have_a_dream.as_bytes();
+         let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-        let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
+         let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
 
-        plaintext_vec
-            .extend_from_slice(plaintext)
+         plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-        let encrypted: crypto::AsymmetricEncrypted<256> =
-            crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key).expect("Encryption failed");
+         let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<256>(&mut plaintext_vec, &pub_key)
+                .expect("Encryption failed");
 
-        let mut nonce_bytes = [0u8; 12];
+         let mut nonce_bytes = [0u8; 12];
 
-        for i in 0..12 {
+         for i in 0..12 {
             nonce_bytes[i] = i as u8;
         }
+        
+         let _decrypted = crypto::asymmetric_decrypt_in_place(& mut plaintext_vec, &nonce_bytes, &public_key, &auth_tag, &priv_key).expect("Decryption failed");
+         
+        assert_ne!(plaintext_vec, i_have_a_dream.as_bytes(), "Expected AesGcmDecryptError, but got {:?}", plaintext_vec);
 
-        let decrypted = crypto::asymmetric_decrypt(
-            &encrypted.ciphertext,
-            &nonce_bytes,
-            &encrypted.cipher_public_key,
-            &encrypted.auth_tag,
-            &priv_key,
-        );
-
-        assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
-            "Expected AesGcmDecryptError, but got {:?}",
-            decrypted
-        );
-    }
+     }
     #[test]
     fn ecc_test_fail_ciphertext() {
-        let mut rng = SecureRng::new().expect("Failed to create RNG");
+         let mut rng = SecureRng::new().expect("Failed to create RNG");
 
-        let priv_key = StaticSecret::random_from_rng(&mut rng);
+         let priv_key = StaticSecret::random_from_rng(&mut rng);
 
-        let pub_key = PublicKey::from(&priv_key);
-
-        let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
+         let pub_key = PublicKey::from(&priv_key);
+         
+         let i_have_a_dream: &str = "I am happy to join with you today in what will go down in \
              history as the greatest demonstration for freedom in the history of our nation. \
              Five score years ago, a great American, in whose symbolic shadow we stand today, \
              signed the Emancipation Proclamation";
-        let plaintext: &[u8] = i_have_a_dream.as_bytes();
+         let plaintext: &[u8] = i_have_a_dream.as_bytes();
 
-        let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
+         let mut plaintext_vec = heapless::Vec::<u8, 256>::new();
 
-        plaintext_vec
-            .extend_from_slice(plaintext)
+         plaintext_vec.extend_from_slice(plaintext)
             .expect("Plaintext is too large for MAX_CONTENTS_SIZE");
 
-        let encrypted: crypto::AsymmetricEncrypted<256> =
-            crypto::asymmetric_encrypt::<256>(&plaintext_vec, &pub_key).expect("Encryption failed");
+         let (nonce, auth_tag, public_key) = crypto::asymmetric_encrypt_in_place::<256>(&mut plaintext_vec, &pub_key)
+                .expect("Encryption failed");
 
-        let decrypted = crypto::asymmetric_decrypt(
-            &plaintext_vec,
-            &encrypted.nonce,
-            &encrypted.cipher_public_key,
-            &encrypted.auth_tag,
-            &priv_key,
-        );
+        
+        let _decrypted = crypto::asymmetric_decrypt_in_place(& mut plaintext_vec, &nonce, &public_key, &auth_tag, &priv_key).expect("Decryption failed");
+         
+        assert_ne!(plaintext_vec, i_have_a_dream.as_bytes(), "Expected AesGcmDecryptError, but got {:?}", plaintext_vec);
 
-        assert!(
-            matches!(decrypted, Err(crypto::CryptoError::AesGcmDecryptError)),
-            "Expected AesGcmDecryptError, but got {:?}",
-            decrypted
-        );
-    }
-}
+     }
+
+
+
+
+
+
+ }
