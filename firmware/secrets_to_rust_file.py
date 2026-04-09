@@ -88,8 +88,6 @@ def secrets_to_rust_file(
 
     pin_hash, pin_salt = hash_pin(hsm_pin)
 
-    null_key = bytes(32)  # 32 zero bytes for absent private keys
-
     print(key_pairs)
     with open(os.path.join(path, "secrets.rs"), "w") as f:
         f.write("// Auto-generated — do not edit by hand\n")
@@ -118,6 +116,7 @@ def secrets_to_rust_file(
         for perm in permissions:
             group_keys = key_pairs[str(perm.group_id)]
 
+            # X25519 keys (for ECDH encryption/decryption)
             read_pub = base64.b64decode(group_keys["read"]["public"])
             write_pub = base64.b64decode(group_keys["write"]["public"])
             recv_pub = base64.b64decode(group_keys["receive"]["public"])
@@ -134,6 +133,27 @@ def secrets_to_rust_file(
                 else None
             )
 
+            # Ed25519 keys (for signing/verification)
+            read_sign_pub = base64.b64decode(group_keys["read"]["signing_public"])
+            write_sign_pub = base64.b64decode(group_keys["write"]["signing_public"])
+            recv_sign_pub = base64.b64decode(group_keys["receive"]["signing_public"])
+
+            read_sign_priv = (
+                base64.b64decode(group_keys["read"]["signing_private"])
+                if perm.read
+                else None
+            )
+            write_sign_priv = (
+                base64.b64decode(group_keys["write"]["signing_private"])
+                if perm.write
+                else None
+            )
+            recv_sign_priv = (
+                base64.b64decode(group_keys["receive"]["signing_private"])
+                if perm.receive
+                else None
+            )
+
             f.write("    GroupPermission {\n")
             f.write(f"        group_id: {perm.group_id:#x},\n")
             f.write(f"        read_perm: {str(perm.read).lower()},\n")
@@ -141,12 +161,14 @@ def secrets_to_rust_file(
             f.write(f"        receive_perm: {str(perm.receive).lower()},\n")
             f.write("        keys: KeyPairSet {\n")
 
-            for key_name, pub, priv in [
-                ("read_keys", read_pub, read_priv),
-                ("write_keys", write_pub, write_priv),
-                ("receive_keys", recv_pub, recv_priv),
+            for key_name, pub, priv, sign_pub, sign_priv in [
+                ("read_keys", read_pub, read_priv, read_sign_pub, read_sign_priv),
+                ("write_keys", write_pub, write_priv, write_sign_pub, write_sign_priv),
+                ("receive_keys", recv_pub, recv_priv, recv_sign_pub, recv_sign_priv),
             ]:
                 f.write(f"            {key_name}: KeyPair {{\n")
+
+                # X25519 encryption keys
                 f.write(
                     f"                public_key: [\n"
                     f"{bytes_to_rust_array(pub)}\n"
@@ -160,6 +182,22 @@ def secrets_to_rust_file(
                         f"{bytes_to_rust_array(priv)}\n"
                         f"                ]),\n"
                     )
+
+                # Ed25519 signing keys
+                f.write(
+                    f"                signing_public_key: [\n"
+                    f"{bytes_to_rust_array(sign_pub)}\n"
+                    f"                ],\n"
+                )
+                if sign_priv is None:
+                    f.write("                signing_private_key: None,\n")
+                else:
+                    f.write(
+                        f"                signing_private_key: Some([\n"
+                        f"{bytes_to_rust_array(sign_priv)}\n"
+                        f"                ]),\n"
+                    )
+
                 f.write("            },\n")
 
             f.write("        },\n")

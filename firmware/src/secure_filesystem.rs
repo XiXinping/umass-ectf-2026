@@ -282,7 +282,7 @@ impl ProtectedFile {
         let signature = ecc_sign_file_digest(&digest, &write_key_bytes)
             .map_err(|_| FileError::GenSignatureError)?;
 
-        out.in_use = 0;
+        out.in_use = FILE_IN_USE;
         out.group_id = group_id;
         out.uuid = uuid;
         out.name = *name;

@@ -7,17 +7,35 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import (
     X25519PrivateKey,
     X25519PublicKey,
 )
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+)
 
 from cryptography.hazmat.primitives import serialization
 
 # from loguru import logger
 
 
-# Generates a public and private key pair using Curve25519. The resulting keys are
-# stored as a bytes object.
-def gen_ecc_key_pair() -> dict[str, bytes]:
+# Generates a public and private X25519 key pair for encryption/decryption (ECDH).
+def gen_x25519_key_pair() -> dict[str, str]:
     private_key: X25519PrivateKey = X25519PrivateKey.generate()
     public_key: X25519PublicKey = private_key.public_key()
+    private_key_bytes: bytes = private_key.private_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PrivateFormat.Raw,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    public_key_bytes: bytes = public_key.public_bytes_raw()
+    return {
+        "private": base64.b64encode(private_key_bytes).decode("ascii"),
+        "public": base64.b64encode(public_key_bytes).decode("ascii"),
+    }
+
+
+# Generates a public and private Ed25519 key pair for signing/verification.
+def gen_ed25519_key_pair() -> dict[str, str]:
+    private_key = Ed25519PrivateKey.generate()
+    public_key = private_key.public_key()
     private_key_bytes: bytes = private_key.private_bytes(
         encoding=serialization.Encoding.Raw,
         format=serialization.PrivateFormat.Raw,
@@ -52,14 +70,19 @@ def gen_secrets(groups: list[int]) -> bytes:
     :returns: Contents of the secrets file
     """
 
-    ecc_key_pairs: dict[int, dict[str, dict[str, bytes]]] = {}
+    ecc_key_pairs: dict[int, dict[str, dict[str, str]]] = {}
     for group_id in groups:
-        group_keys: dict[str, dict[str, bytes]] = {}
+        group_keys: dict[str, dict[str, str]] = {}
         for perm_type in PermissionType:
-            key_pair = gen_ecc_key_pair()
+            x25519_pair = gen_x25519_key_pair()
+            ed25519_pair = gen_ed25519_key_pair()
             group_keys[str(perm_type)] = {
-                "public": key_pair["public"],
-                "private": key_pair["private"],
+                # X25519 keys for ECDH encryption/decryption
+                "public": x25519_pair["public"],
+                "private": x25519_pair["private"],
+                # Ed25519 keys for signing/verification
+                "signing_public": ed25519_pair["public"],
+                "signing_private": ed25519_pair["private"],
             }
         ecc_key_pairs[group_id] = group_keys
 
@@ -128,4 +151,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

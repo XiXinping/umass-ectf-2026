@@ -9,8 +9,10 @@ use crate::{GLOBAL_SECRET, aes_hardware_accel::GcmEngine};
 use heapless::Vec;
 use hkdf::Hkdf;
 use sha2::Sha256;
+// X25519 types for ECDH encryption/decryption
 use x25519_dalek::{PublicKey, StaticSecret};
 
+// Ed25519 types for signing/verification
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 
 /// GCM operates on 128-bit (16-byte) blocks regardless of key size.
@@ -21,6 +23,10 @@ pub const NONCE_SIZE: usize = 12;
 pub const AUTH_TAG_SIZE: usize = 16;
 pub const PUBLIC_KEY_SIZE: usize = size_of::<PublicKey>();
 pub const PRIVATE_KEY_SIZE: usize = 32;
+/// The size of an Ed25519 signing key (private).
+pub const SIGNING_KEY_SIZE: usize = 32;
+/// The size of an Ed25519 verifying key (public).
+pub const VERIFYING_KEY_SIZE: usize = 32;
 /// The size of an Ed25519 signature.
 pub const SIGNATURE_SIZE: usize = 64;
 
@@ -577,23 +583,29 @@ pub fn asymmetric_decrypt_in_place(
 // ─── Ed25519 signing / verification ───────────────────────────────
 
 /// Sign a file digest using Ed25519.
+///
+/// `signing_key_bytes` must be a 32-byte Ed25519 private key
+/// (NOT an X25519 private key — those are for ECDH encryption).
 pub fn ecc_sign_file_digest(
     digest: &[u8],
-    private_key_bytes: &[u8; PRIVATE_KEY_SIZE],
+    signing_key_bytes: &[u8; SIGNING_KEY_SIZE],
 ) -> Result<Signature, AuthError> {
-    let signing_key = SigningKey::from_bytes(private_key_bytes);
+    let signing_key = SigningKey::from_bytes(signing_key_bytes);
     let signature: Signature = signing_key.sign(digest);
     Ok(signature)
 }
 
 /// Verify an Ed25519 signature over a file digest.
+///
+/// `verifying_key_bytes` must be a 32-byte Ed25519 public key
+/// (NOT an X25519 public key — those are for ECDH encryption).
 pub fn ecc_verify_file_digest(
     signature: &Signature,
     digest: &[u8],
-    public_key_bytes: &[u8; PUBLIC_KEY_SIZE],
+    verifying_key_bytes: &[u8; VERIFYING_KEY_SIZE],
 ) -> Result<(), AuthError> {
     let verifying_key =
-        VerifyingKey::from_bytes(public_key_bytes).map_err(|_| AuthError::KeyImportFailed)?;
+        VerifyingKey::from_bytes(verifying_key_bytes).map_err(|_| AuthError::KeyImportFailed)?;
 
     verifying_key
         .verify(digest, signature)
