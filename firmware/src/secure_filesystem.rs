@@ -2,7 +2,8 @@
 // provides a secure interface for file operations
 
 use crate::crypto::{
-    AUTH_TAG_SIZE, NONCE_SIZE, PUBLIC_KEY_SIZE, SIGNATURE_SIZE, asymmetric_decrypt_in_place, asymmetric_encrypt_in_place, ecc_sign_file_digest, ecc_verify_file_digest
+    AUTH_TAG_SIZE, NONCE_SIZE, PUBLIC_KEY_SIZE, SIGNATURE_SIZE, asymmetric_decrypt_in_place,
+    asymmetric_encrypt_in_place, ecc_sign_file_digest, ecc_verify_file_digest,
 };
 use crate::permission::{self, PermissionType, get_public_key};
 
@@ -36,7 +37,7 @@ const FILE_PAGE_COUNT: u32 = 9;
 const STORED_FILE_SIZE: u32 = FLASH_PAGE_SIZE * FILE_PAGE_COUNT;
 
 /// First flash address for file storage.
-const FILES_START_ADDR: u32 = 0x0001_0000;
+const FILES_START_ADDR: u32 = 0x0002_8000;
 
 /// Sentinel value indicating a slot is in use.
 pub const FILE_IN_USE: u32 = 0xDEAD_BEEF;
@@ -94,7 +95,7 @@ pub trait Flash {
 
 /// FAT entry — matches the C `filesystem_entry_t` layout exactly.
 #[repr(C)]
-#[derive(Clone, Copy, defmt::Format)]
+#[derive(Clone, Copy, defmt::Format, Default)]
 pub struct FatEntry {
     pub uuid: [u8; 16],
     pub length: u16,
@@ -107,17 +108,6 @@ impl FatEntry {
     pub fn is_empty(&self) -> bool {
         (self.flash_addr == 0 && self.length == 0)
             || (self.flash_addr == 0xFFFF_FFFF && self.length == 0xFFFF)
-    }
-}
-
-impl Default for FatEntry {
-    fn default() -> Self {
-        Self {
-            uuid: [0; 16],
-            length: 0,
-            padding: 0,
-            flash_addr: 0,
-        }
     }
 }
 
@@ -269,7 +259,6 @@ impl ProtectedFile {
             .ok_or(FileError::InvalidGroupId)?;
 
         out.ciphertext[..contents.len()].copy_from_slice(contents);
-
 
         let (nonce, auth_tag, cipher_public_key) =
             asymmetric_encrypt_in_place::<MAX_CONTENTS_SIZE>(
@@ -549,7 +538,7 @@ impl Filesystem {
         let idx = Self::validate_slot(slot)?;
 
         let entry = &self.fat[idx];
-        println!("{:?}", entry);
+
         if entry.is_empty() {
             return Err(FsError::InvalidFatEntry);
         }

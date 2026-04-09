@@ -86,20 +86,19 @@ mod gcm_tests {
         let mut plaintext = [0u8; 8192];
         plaintext[..super_secret_data.len()].copy_from_slice(super_secret_data);
 
-        for i in 0..2 {
+        let mut hw_flash: HwFlash = HwFlash;
+        let mut fs = secure_filesystem::Filesystem::init(&hw_flash);
+
+        for _ in 0..2 {
             let mut file = ProtectedFile::default();
             secure_filesystem::ProtectedFile::create_in(
                 &mut file, group_id, FILE_UUID, &file_name, &plaintext,
             )
             .expect("Failed to create protected file");
 
-            let mut hw_flash: HwFlash = HwFlash;
-            let mut fs = secure_filesystem::Filesystem::init(&hw_flash);
-
-            fs.write_file(0, &file, FILE_UUID, &mut hw_flash)
+            fs.write_file(4, &file, FILE_UUID, &mut hw_flash)
                 .expect("Failed to write to slot!");
         }
-        
     }
 
     // #[test]

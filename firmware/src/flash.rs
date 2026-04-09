@@ -8,6 +8,7 @@
 //! a flash bank while that bank is being erased or programmed.
 
 use core::ptr;
+use defmt::println;
 use embassy_time::Instant;
 
 use crate::secure_filesystem::{Flash, FsError};
