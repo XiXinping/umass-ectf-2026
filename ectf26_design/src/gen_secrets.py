@@ -74,15 +74,14 @@ def gen_secrets(groups: list[int]) -> bytes:
     for group_id in groups:
         group_keys: dict[str, dict[str, str]] = {}
         for perm_type in PermissionType:
-            x25519_pair = gen_x25519_key_pair()
-            ed25519_pair = gen_ed25519_key_pair()
+            if perm_type == PermissionType.WRITE:
+                key_pair = gen_ed25519_key_pair()
+            else:
+                key_pair = gen_x25519_key_pair()
+
             group_keys[str(perm_type)] = {
-                # X25519 keys for ECDH encryption/decryption
-                "public": x25519_pair["public"],
-                "private": x25519_pair["private"],
-                # Ed25519 keys for signing/verification
-                "signing_public": ed25519_pair["public"],
-                "signing_private": ed25519_pair["private"],
+                "public": key_pair["public"],
+                "private": key_pair["private"],
             }
         ecc_key_pairs[group_id] = group_keys
 
@@ -151,3 +150,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

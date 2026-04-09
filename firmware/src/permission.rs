@@ -3,17 +3,27 @@ use x25519_dalek::{PublicKey, SharedSecret, StaticSecret};
 
 use crate::secrets::{NUM_PERMS, PERMISSIONS};
 
+/// Public-private keypair for Elliptic-Curve Diffie Hellman key exchange. Used for asymmetric
+/// encryption.
 #[derive(Clone, Copy)]
-pub struct KeyPair {
-    pub public_key: [u8; 32], // adjust size to match your actual key length
+pub struct EcdhKeyPair {
+    pub public_key: [u8; 32],
+    pub private_key: Option<[u8; 32]>,
+}
+
+/// Public-private keypair for Elliptic-Curve Digital Signature Algorithm. Used for signing and
+/// verification.
+#[derive(Clone, Copy)]
+pub struct EcdsaKeyPair {
+    pub public_key: [u8; 32],
     pub private_key: Option<[u8; 32]>,
 }
 
 #[derive(Clone, Copy)]
 pub struct KeyPairSet {
-    pub read_keys: KeyPair,
-    pub write_keys: KeyPair,
-    pub receive_keys: KeyPair,
+    pub read_keys: EcdhKeyPair,
+    pub write_keys: EcdsaKeyPair,
+    pub receive_keys: EcdhKeyPair,
 }
 
 #[derive(Clone, Copy)]

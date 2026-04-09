@@ -170,9 +170,8 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
             return;
         }
         Err(FsError::InvalidSignature) => {
-            // host.print_error("Invalid signature");
-            // return;
-            host.print_debug("Warning: Invalid signature");
+            host.print_error("Invalid signature");
+            return;
         }
         Err(_) => {
             host.print_error("Something has gone wrong!");
@@ -207,17 +206,7 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
     };
     let plaintext = &file.ciphertext[..file.plaintext_len];
 
-    host.print_debug("Read: Contents (hex):");
-    host.print_hex_debug(plaintext);
-    host.print_debug("Read: Contents debug sent\n");
-
     let _ = host.write_packet_chunks(MsgType::Read, &[&file.name, plaintext]);
-    // let mut resp = [0u8; MAX_NAME_SIZE + MAX_CONTENTS_SIZE];
-    // resp[..MAX_NAME_SIZE].copy_from_slice(&file.name);
-    // resp[MAX_NAME_SIZE..MAX_NAME_SIZE + contents.len()].copy_from_slice(&contents);
-    //
-    // let resp_len = MAX_NAME_SIZE + contents.len();
-    // let _ = host.write_packet(MsgType::Read, &resp[..resp_len]);
     host.print_debug("Read: Sent file contents response\n");
 }
 
