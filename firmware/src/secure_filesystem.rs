@@ -573,14 +573,6 @@ impl Filesystem {
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-/// Total bytes to write for a file: metadata fields + contents.
-/// Equivalent to C `FILE_TOTAL_SIZE` but without the macro precedence bug.
-fn file_total_size(contents_len: u16) -> u16 {
-    // offset of `contents` in File = in_use(4) + group_id(2) + name(32) + contents_len(2) = 40
-    let metadata_size = mem::offset_of!(ProtectedFile, ciphertext) as u16;
-    metadata_size + contents_len
-}
-
 fn elapsed_ms(since: Instant) -> u64 {
     Instant::now().duration_since(since).as_millis()
 }

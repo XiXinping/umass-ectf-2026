@@ -4,13 +4,15 @@
 //! (see `aes_hardware_accel`). Hybrid (asymmetric) encryption layers
 //! X25519 ECDH + HKDF-SHA256 key derivation on top of the hardware GCM.
 
-use crate::{GLOBAL_PUB_KEY, GLOBAL_RNG};
-use crate::{GLOBAL_SECRET, aes_hardware_accel::GcmEngine};
+use crate::aes_hardware_accel::GcmEngine;
+use crate::secrets::NUM_PERMS;
+use crate::{GLOBAL_PUB_KEY, GLOBAL_RNG, GLOBAL_SHARED_SECRETS};
+use defmt::println;
 use heapless::Vec;
 use hkdf::Hkdf;
 use sha2::Sha256;
 // X25519 types for ECDH encryption/decryption
-use x25519_dalek::{PublicKey, StaticSecret};
+use x25519_dalek::{PublicKey, SharedSecret, StaticSecret};
 
 // Ed25519 types for signing/verification
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
@@ -29,6 +31,9 @@ pub const SIGNING_KEY_SIZE: usize = 32;
 pub const VERIFYING_KEY_SIZE: usize = 32;
 /// The size of an Ed25519 signature.
 pub const SIGNATURE_SIZE: usize = 64;
+
+/// There are two pre-computed shared secrets for every permission.
+pub const NUM_SHARED_SECRETS: usize = NUM_PERMS * 2;
 
 /// Spin-loop ceiling for AESADV ready-flag polling.
 /// Generous enough for multi-block payloads at 32 MHz.
@@ -83,6 +88,24 @@ pub struct AsymmetricEncryptedMetadata {
     pub nonce: [u8; 12],
     pub cipher_public_key: PublicKey,
     pub auth_tag: [u8; AUTH_TAG_SIZE],
+}
+
+/// Stores pre-computed Diffie-Hellman shared secrets
+pub struct SharedSecrets {
+    pub public_key: PublicKey,
+    pub shared_secret: [u8; 16],
+}
+
+pub fn get_secret_by_public_key(public_key: &PublicKey) -> Option<[u8; 16]> {
+    critical_section::with(|cs| {
+        let guard = GLOBAL_SHARED_SECRETS.borrow(cs).borrow();
+        let secrets = guard.as_ref()?;
+
+        secrets
+            .iter()
+            .find(|s| s.public_key.as_bytes() == public_key.as_bytes())
+            .map(|s| s.shared_secret)
+    })
 }
 
 // ─── Byte ↔ word conversion for AESADV registers ──────────────────
@@ -499,19 +522,17 @@ pub fn asymmetric_encrypt_in_place<const N: usize>(
 
     // let cipher_public_key = PublicKey::from(&ephemeral_secret);
 
-    let secret = critical_section::with(|cs| {
-        GLOBAL_SECRET
-            .borrow(cs)
-            .borrow()
-            .clone()
-            .expect("crypto not initialized")
-    });
+    // let secret = critical_section::with(|cs| {
+    //     GLOBAL_SECRET
+    //         .borrow(cs)
+    //         .borrow()
+    //         .clone()
+    //         .expect("crypto not initialized")
+    // });
 
-    let shared_secret = secret.diffie_hellman(public_key);
-    let hk = Hkdf::<Sha256>::new(None, shared_secret.as_bytes());
-    let mut aes_key: [u8; 16] = [0; 16];
-    hk.expand(b"aes-gcm key", &mut aes_key)
-        .map_err(|_| CryptoError::AsymmetricKeyError)?;
+    println!("pub key: {:?}", public_key.as_bytes());
+    let aes_key = get_secret_by_public_key(public_key)
+        .expect("Public key not found in cached shared secrets!");
 
     let nonce: [u8; 12] = critical_section::with(|cs| {
         GLOBAL_RNG

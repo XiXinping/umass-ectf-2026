@@ -1,8 +1,11 @@
+use defmt::println;
 use heapless::Vec;
-use x25519_dalek::{PublicKey, SharedSecret, StaticSecret};
+use hkdf::Hkdf;
+use sha2::Sha256;
+use x25519_dalek::{PublicKey, StaticSecret};
 
+use crate::crypto::{NUM_SHARED_SECRETS, SharedSecrets};
 use crate::secrets::{NUM_PERMS, PERMISSIONS};
-
 /// Public-private keypair for Elliptic-Curve Diffie Hellman key exchange. Used for asymmetric
 /// encryption.
 #[derive(Clone, Copy)]
@@ -41,12 +44,6 @@ pub struct GroupPermission {
     pub write_perm: bool,
     pub receive_perm: bool,
     pub keys: KeyPairSet,
-}
-
-pub struct SharedSecrets {
-    group_id: u16,
-    read_secret: SharedSecret,
-    receive_secret: SharedSecret,
 }
 
 pub fn get_private_key(group_id: u16, permission_type: PermissionType) -> Option<[u8; 32]> {
@@ -91,15 +88,32 @@ pub fn has_permission(group_id: u16, permission_type: PermissionType) -> bool {
     false
 }
 
-pub fn gen_shared_secrets(secret: StaticSecret) -> [SharedSecrets; NUM_PERMS] {
-    let mut secret_list: Vec<SharedSecrets, NUM_PERMS> = Vec::new();
+/// Pre-compute Diffie-Hellman shared secrets to save on encryption time.
+pub fn gen_shared_secrets(secret: StaticSecret) -> [SharedSecrets; NUM_SHARED_SECRETS] {
+    let mut secret_list: Vec<SharedSecrets, NUM_SHARED_SECRETS> = Vec::new();
     for group in PERMISSIONS {
         let read_pub_key = get_public_key(group.group_id, PermissionType::Read).unwrap();
         let recv_pub_key = get_public_key(group.group_id, PermissionType::Receive).unwrap();
+        let read_shared_secret = secret.diffie_hellman(&PublicKey::from(read_pub_key));
+        let recv_shared_secret = secret.diffie_hellman(&PublicKey::from(recv_pub_key));
+
+        let hk = Hkdf::<Sha256>::new(None, read_shared_secret.as_bytes());
+        let mut read_aes_key: [u8; 16] = [0; 16];
+        hk.expand(b"aes-gcm key", &mut read_aes_key).unwrap();
+
+        let hk = Hkdf::<Sha256>::new(None, recv_shared_secret.as_bytes());
+        let mut recv_aes_key: [u8; 16] = [0; 16];
+        hk.expand(b"aes-gcm key", &mut recv_aes_key).unwrap();
+
+        println!("read_pub_key: {:?}", read_pub_key);
         let _ = secret_list.push(SharedSecrets {
-            group_id: group.group_id,
-            read_secret: secret.diffie_hellman(&PublicKey::from(read_pub_key)),
-            receive_secret: secret.diffie_hellman(&PublicKey::from(recv_pub_key)),
+            public_key: read_pub_key.into(),
+            shared_secret: read_aes_key,
+        });
+        println!("recv_pub_key: {:?}", recv_pub_key);
+        let _ = secret_list.push(SharedSecrets {
+            public_key: recv_pub_key.into(),
+            shared_secret: recv_aes_key,
         });
     }
     match secret_list.into_array() {

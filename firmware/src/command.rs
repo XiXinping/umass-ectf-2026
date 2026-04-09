@@ -293,37 +293,12 @@ fn cmd_write(
         }
     };
 
-    let t1 = unsafe { core::ptr::read_volatile(SYST_CVR) };
     if let Err(_e) = fs.write_file(slot, &file, uuid, flash) {
         // host.print_debug("write_file failed:");
         // host.print_hex_debug(&[e as u8]);
         host.print_error("Flash write failed");
         return;
     }
-
-    let t2 = unsafe { core::ptr::read_volatile(SYST_CVR) };
-
-    // SysTick counts DOWN at 32 MHz. Delta ticks / 32 = microseconds.
-    let create_us = (t0.wrapping_sub(t1) & 0x00FF_FFFF) / 32;
-    let flash_us = (t1.wrapping_sub(t2) & 0x00FF_FFFF) / 32;
-    host.print_debug("create_us:");
-    // host.print_hex_debug(&create_us.to_le_bytes());
-    host.print_debug(
-        &format!(
-            32; "Create: {}us",
-            create_us
-        )
-        .unwrap(),
-    );
-
-    host.print_debug("flash_us:");
-    host.print_debug(
-        &format!(
-            32; "Flash: {}us",
-            flash_us
-        )
-        .unwrap(),
-    );
 
     // host.print_hex_debug(&flash_us.to_le_bytes());
     // Success — empty body
