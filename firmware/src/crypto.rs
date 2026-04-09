@@ -496,8 +496,8 @@ pub fn asymmetric_encrypt_in_place<const N: usize>(
     let secret = critical_section::with(|cs| {
         GLOBAL_SECRET
             .borrow(cs)
-            .borrow_mut()
-            .take() // moves it out, leaves None behind
+            .borrow()
+            .clone()
             .expect("crypto not initialized")
     });
 
