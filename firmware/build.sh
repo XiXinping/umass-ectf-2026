@@ -4,7 +4,7 @@ set -e
 # Default output directory to /out (mapped volume) if not provided
 BUILDDIR=${1:-/tmp/build}
 TARGET=${TARGET:-thumbv6m-none-eabi}
-BIN_NAME=${BIN_NAME:-embassy-mspm0-l2228-examples}
+BIN_NAME=${BIN_NAME:-ectf-2026}
 mkdir -p "$BUILDDIR"
 
 # 1. Generate secrets (existing logic)
