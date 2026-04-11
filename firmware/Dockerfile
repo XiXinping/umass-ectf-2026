@@ -53,7 +53,7 @@ WORKDIR /hsm
 
 # Copy only the dependency manifest first so Docker can cache dependency downloads.
 COPY Cargo.toml Cargo.lock ./
-COPY src/main.rs ./src/main.rs
+COPY src/ ./src/
 
 # Prefetch Rust dependencies (including git dependencies) for embedded targets.
 RUN cargo fetch --locked --manifest-path /hsm/Cargo.toml --target thumbv6m-none-eabi --target thumbv7m-none-eabi
