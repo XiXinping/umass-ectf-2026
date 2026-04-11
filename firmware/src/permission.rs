@@ -1,7 +1,12 @@
-use heapless::Vec;
-use x25519_dalek::{PublicKey, SharedSecret, StaticSecret};
+use crate::secrets;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 
-use crate::secrets::{NUM_PERMS, PERMISSIONS};
+/// Pre-computed AES key created by performing Diffie-Hellman key exchange using the public key
+/// of the group and the HSM's local secret. Used for asymmetric decryption.
+pub type EncryptKey = [u8; 16];
+
+// Diffie-Hellman private key used to derive shared secret. Used for asymmetric decryption.
+pub type DecryptKey = [u8; 32];
 
 /// Public-private keypair for Elliptic-Curve Diffie Hellman key exchange. Used for asymmetric
 /// encryption.
@@ -19,11 +24,25 @@ pub struct EcdsaKeyPair {
     pub private_key: Option<[u8; 32]>,
 }
 
-#[derive(Clone, Copy)]
+/// Public-private keypair for Elliptic-Curve Digital Signature Algorithm. Used for signing and
+/// verification.
+#[derive(Clone)]
+pub struct SignatureKeyPair {
+    pub signing_key: Option<SigningKey>,
+    pub verifying_key: VerifyingKey,
+}
+
+#[derive(Clone)]
+pub struct EncryptionKeyPair {
+    pub encrypt_key: EncryptKey,
+    pub decrypt_key: DecryptKey,
+}
+
+#[derive(Clone)]
 pub struct KeyPairSet {
-    pub read_keys: EcdhKeyPair,
-    pub write_keys: EcdsaKeyPair,
-    pub receive_keys: EcdhKeyPair,
+    pub read_keys: EncryptionKeyPair,
+    pub write_keys: SignatureKeyPair,
+    pub receive_keys: EncryptionKeyPair,
 }
 
 #[derive(Clone, Copy)]
@@ -33,8 +52,7 @@ pub enum PermissionType {
     Receive,
 }
 
-// permission.rs
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct GroupPermission {
     pub group_id: u16,
     pub read_perm: bool,
@@ -43,67 +61,56 @@ pub struct GroupPermission {
     pub keys: KeyPairSet,
 }
 
-pub struct SharedSecrets {
-    group_id: u16,
-    read_secret: SharedSecret,
-    receive_secret: SharedSecret,
+pub fn get_signing_key(group_id: u16) -> Option<SigningKey> {
+    secrets::permissions()
+        .iter()
+        .find(|g| g.group_id == group_id)
+        .and_then(|g| g.keys.write_keys.signing_key.clone())
 }
 
-pub fn get_private_key(group_id: u16, permission_type: PermissionType) -> Option<[u8; 32]> {
-    for group in PERMISSIONS {
-        if group.group_id != group_id {
-            continue;
-        }
-        match permission_type {
-            PermissionType::Read => return group.keys.read_keys.private_key,
-            PermissionType::Write => return group.keys.write_keys.private_key,
-            PermissionType::Receive => return group.keys.receive_keys.private_key,
-        }
-    }
-    None
+pub fn get_verifying_key(group_id: u16) -> Option<VerifyingKey> {
+    secrets::permissions()
+        .iter()
+        .find(|g| g.group_id == group_id)
+        .and_then(|g| Some(g.keys.write_keys.verifying_key))
 }
 
-pub fn get_public_key(group_id: u16, permission_type: PermissionType) -> Option<[u8; 32]> {
-    for group in PERMISSIONS {
-        if group.group_id != group_id {
-            continue;
-        }
-        match permission_type {
-            PermissionType::Read => return Some(group.keys.read_keys.public_key),
-            PermissionType::Write => return Some(group.keys.write_keys.public_key),
-            PermissionType::Receive => return Some(group.keys.receive_keys.public_key),
-        }
-    }
-    None
+pub fn get_read_encrypt_key(group_id: u16) -> Option<EncryptKey> {
+    secrets::permissions()
+        .iter()
+        .find(|g| g.group_id == group_id)
+        .map(|g| g.keys.read_keys.encrypt_key)
+}
+
+pub fn get_read_decrypt_key(group_id: u16) -> Option<DecryptKey> {
+    secrets::permissions()
+        .iter()
+        .find(|g| g.group_id == group_id)
+        .map(|g| g.keys.read_keys.decrypt_key)
+}
+
+pub fn get_receive_encrypt_key(group_id: u16) -> Option<EncryptKey> {
+    secrets::permissions()
+        .iter()
+        .find(|g| g.group_id == group_id)
+        .map(|g| g.keys.receive_keys.encrypt_key)
+}
+
+pub fn get_receive_decrypt_key(group_id: u16) -> Option<DecryptKey> {
+    secrets::permissions()
+        .iter()
+        .find(|g| g.group_id == group_id)
+        .map(|g| g.keys.receive_keys.decrypt_key)
 }
 
 pub fn has_permission(group_id: u16, permission_type: PermissionType) -> bool {
-    for group in PERMISSIONS {
-        if group.group_id != group_id {
-            continue;
-        }
-        match permission_type {
-            PermissionType::Read => return group.read_perm,
-            PermissionType::Write => return group.write_perm,
-            PermissionType::Receive => return group.receive_perm,
-        }
-    }
-    false
-}
-
-pub fn gen_shared_secrets(secret: StaticSecret) -> [SharedSecrets; NUM_PERMS] {
-    let mut secret_list: Vec<SharedSecrets, NUM_PERMS> = Vec::new();
-    for group in PERMISSIONS {
-        let read_pub_key = get_public_key(group.group_id, PermissionType::Read).unwrap();
-        let recv_pub_key = get_public_key(group.group_id, PermissionType::Receive).unwrap();
-        let _ = secret_list.push(SharedSecrets {
-            group_id: group.group_id,
-            read_secret: secret.diffie_hellman(&PublicKey::from(read_pub_key)),
-            receive_secret: secret.diffie_hellman(&PublicKey::from(recv_pub_key)),
-        });
-    }
-    match secret_list.into_array() {
-        Ok(list) => list,
-        Err(_) => panic!(),
-    }
+    secrets::permissions()
+        .iter()
+        .find(|g| g.group_id == group_id)
+        .map(|g| match permission_type {
+            PermissionType::Read => g.read_perm,
+            PermissionType::Write => g.write_perm,
+            PermissionType::Receive => g.receive_perm,
+        })
+        .unwrap_or(false)
 }

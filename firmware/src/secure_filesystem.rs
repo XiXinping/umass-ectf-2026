@@ -5,11 +5,11 @@ use crate::crypto::{
     AUTH_TAG_SIZE, NONCE_SIZE, PUBLIC_KEY_SIZE, SIGNATURE_SIZE, asymmetric_decrypt_in_place,
     asymmetric_encrypt_in_place, ecc_sign_file_digest, ecc_verify_file_digest,
 };
-use crate::permission::{self, PermissionType, get_public_key};
+use crate::permission::{self, get_verifying_key};
 
 use core::mem;
 use defmt::{info, println};
-use ed25519_dalek::Signature;
+use ed25519_dalek::{Signature, Signer, Verifier};
 use embassy_time::Instant;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
@@ -112,7 +112,7 @@ impl FatEntry {
 }
 
 /// On-flash protected file structure
-#[repr(packed)]
+#[repr(Rust, packed)]
 #[derive(PartialEq, Debug, Immutable, KnownLayout, FromBytes, IntoBytes)]
 pub struct ProtectedFile {
     // Metadata
@@ -138,7 +138,7 @@ pub struct ProtectedFile {
     _padding: [u8; 10],
 }
 
-#[repr(packed)]
+#[repr(Rust, packed)]
 #[derive(PartialEq, Debug, Immutable, KnownLayout, FromBytes, IntoBytes)]
 pub struct UnprotectedFile {
     pub in_use: u32,
@@ -149,7 +149,7 @@ pub struct UnprotectedFile {
     pub plaintext: [u8; MAX_CONTENTS_SIZE],
 }
 
-#[repr(packed)]
+#[repr(Rust, packed)]
 #[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct FileMetadata {
     pub slot: u8,
@@ -184,9 +184,9 @@ impl ProtectedFile {
         PublicKey::from(self.ciphertext_public_key)
     }
     pub fn verify_signature(&self) -> Result<(), FileError> {
-        // Get the write public key for the group ID
-        let write_public_key_bytes = get_public_key(self.group_id, PermissionType::Write)
-            .ok_or(FileError::InvalidGroupId)?;
+        // Get the write verifying key for the group ID
+        let write_verifying_key =
+            get_verifying_key(self.group_id).ok_or(FileError::InvalidGroupId)?;
 
         // The digest should contain the encrypted contents, group ID, UUID, and filename
         let mut mac = Hmac::<Sha256>::new_from_slice(&self.ciphertext).unwrap();
@@ -196,7 +196,8 @@ impl ProtectedFile {
 
         let digest = mac.finalize().into_bytes();
 
-        ecc_verify_file_digest(&self.signature(), &digest, &write_public_key_bytes)
+        write_verifying_key
+            .verify(&digest, &self.signature())
             .map_err(|_| FileError::InvalidSignature)
     }
     // Attempt to return the decrypted contents of the file.
@@ -215,8 +216,8 @@ impl ProtectedFile {
     // }
 
     pub fn to_unprotected_file(mut self) -> Result<UnprotectedFile, FileError> {
-        let read_key_bytes = permission::get_private_key(self.group_id, PermissionType::Read)
-            .ok_or(FileError::NoReadPermission)?;
+        let read_key_bytes =
+            permission::get_read_decrypt_key(self.group_id).ok_or(FileError::NoReadPermission)?;
         let nonce = self.nonce;
         let ciphertext_public_key = self.ciphertext_public_key();
         let auth_tag = self.auth_tag;
@@ -253,24 +254,22 @@ impl ProtectedFile {
             contents
         };
 
-        let write_key_bytes = permission::get_private_key(group_id, PermissionType::Write)
-            .ok_or(FileError::NoWritePermission)?;
-        let group_read_public_key = permission::get_public_key(group_id, PermissionType::Read)
-            .ok_or(FileError::InvalidGroupId)?;
+        let write_key =
+            permission::get_signing_key(group_id).ok_or(FileError::NoWritePermission)?;
+        let read_encrypt_key =
+            permission::get_read_encrypt_key(group_id).ok_or(FileError::InvalidGroupId)?;
 
         out.ciphertext[..contents.len()].copy_from_slice(contents);
 
         let (nonce, auth_tag, cipher_public_key) =
             asymmetric_encrypt_in_place::<MAX_CONTENTS_SIZE>(
                 &mut out.ciphertext,
-                &PublicKey::from(group_read_public_key),
+                &read_encrypt_key,
             )
             .map_err(|_| FileError::EncryptError)?;
 
         let digest = Self::digest(group_id, uuid, name, &out.ciphertext);
-        let signature = ecc_sign_file_digest(&digest, &write_key_bytes)
-            .map_err(|_| FileError::GenSignatureError)?;
-
+        let signature = write_key.sign(&digest);
         out.in_use = FILE_IN_USE;
         out.group_id = group_id;
         out.uuid = uuid;
@@ -514,15 +513,9 @@ impl Filesystem {
         let mut buf = [0u8; size_of::<ProtectedFile>()];
         // Read from flash into bytes
         flash.read(entry.flash_addr, &mut buf[..len]);
+        // Interpret bytes as ProtectedFile struct
         let file: ProtectedFile = transmute!(buf);
 
-        // Interpret bytes as ProtectedFile
-        // let file = unsafe {
-        //     // pointer to bytes as *const ProtectedFile
-        //     let p = bytes.as_ptr() as *const ProtectedFile;
-        //     // read_unaligned to avoid alignment UB if alignment isn't guaranteed
-        //     ptr::read_unaligned(p)
-        // };
         match file.verify_signature() {
             Ok(()) => Ok(file),
             Err(_) => Err(FsError::InvalidSignature),
@@ -551,13 +544,6 @@ impl Filesystem {
         // Read from flash into bytes
         flash.read(entry.flash_addr, &mut buf[..len]);
 
-        // Interpret bytes as ProtectedFile
-        // let file = unsafe {
-        //     // pointer to bytes as *const ProtectedFile
-        //     let p = bytes.as_ptr() as *const ProtectedFile;
-        //     // read_unaligned to avoid alignment UB if alignment isn't guaranteed
-        //     ptr::read_unaligned(p)
-        // };
         out.verify_signature()
             .map_err(|_| FsError::InvalidSignature)?;
 
@@ -572,14 +558,6 @@ impl Filesystem {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
-
-/// Total bytes to write for a file: metadata fields + contents.
-/// Equivalent to C `FILE_TOTAL_SIZE` but without the macro precedence bug.
-fn file_total_size(contents_len: u16) -> u16 {
-    // offset of `contents` in File = in_use(4) + group_id(2) + name(32) + contents_len(2) = 40
-    let metadata_size = mem::offset_of!(ProtectedFile, ciphertext) as u16;
-    metadata_size + contents_len
-}
 
 fn elapsed_ms(since: Instant) -> u64 {
     Instant::now().duration_since(since).as_millis()

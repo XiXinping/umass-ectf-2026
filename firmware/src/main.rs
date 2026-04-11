@@ -2,28 +2,18 @@
 #![no_main]
 
 use defmt::*;
-use ectf_2026::GLOBAL_PUB_KEY;
 use ectf_2026::GLOBAL_RNG;
-use ectf_2026::GLOBAL_SECRET;
-use ectf_2026::GLOBAL_SHARED_SECRETS;
 use ectf_2026::authentication::verify_pin;
 use ectf_2026::command;
 use ectf_2026::command::TRANSFER_PAYLOAD_SIZE;
 use ectf_2026::flash::HwFlash;
 use ectf_2026::host::HostUart;
-use ectf_2026::permission::SharedSecrets;
-use ectf_2026::permission::gen_shared_secrets;
 use ectf_2026::random::SecureRng;
-use ectf_2026::secrets::NUM_PERMS;
-use ectf_2026::secrets::PERMISSIONS;
+use ectf_2026::secrets;
 use ectf_2026::secrets::PIN_HASH;
 use ectf_2026::secrets::PIN_SALT;
 use ectf_2026::secure_filesystem::Filesystem;
-use embassy_mspm0::peripherals::SYSCTL;
 use embassy_mspm0::uart::{Config, Uart};
-use x25519_dalek::EphemeralSecret;
-use x25519_dalek::PublicKey;
-use x25519_dalek::StaticSecret;
 
 // use defmt_rtt as _;
 use {defmt_rtt as _, panic_probe as _};
@@ -54,6 +44,9 @@ fn main() -> ! {
     let mut config = Config::default();
     config.baudrate = 115200;
 
+    // Initialize the HSM's secrets
+    secrets::init();
+
     // UART0 — host/control interface
     let uart0 = unwrap!(Uart::new_blocking(p.UART0, p.PA11, p.PA10, config));
     let mut host = HostUart::new(uart0);
@@ -69,16 +62,10 @@ fn main() -> ! {
     let pin_attempt = "abcdef";
     verify_pin(pin_attempt.as_bytes(), &PIN_SALT, &PIN_HASH);
 
-    let mut rng = SecureRng::new().expect("RNG init failed");
-    let secret = StaticSecret::random_from_rng(&mut rng);
-    let pub_key = PublicKey::from(&secret);
-    // let shared_secrets: [SharedSecrets; NUM_PERMS] = gen_shared_secrets(secret.clone());
+    let rng = SecureRng::new().expect("RNG init failed");
 
     critical_section::with(|cs: critical_section::CriticalSection<'_>| {
         *GLOBAL_RNG.borrow(cs).borrow_mut() = Some(rng);
-        *GLOBAL_SECRET.borrow(cs).borrow_mut() = Some(secret.clone());
-        *GLOBAL_PUB_KEY.borrow(cs).borrow_mut() = Some(pub_key);
-        // *GLOBAL_SHARED_SECRETS.borrow(cs).borrow_mut() = Some(shared_secrets);
     });
 
     loop {

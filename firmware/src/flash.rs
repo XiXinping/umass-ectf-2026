@@ -8,7 +8,6 @@
 //! a flash bank while that bank is being erased or programmed.
 
 use core::ptr;
-use defmt::println;
 use embassy_time::Instant;
 
 use crate::secure_filesystem::{Flash, FsError};
@@ -42,11 +41,6 @@ const CMDEXEC_EXECUTE: u32 = 0x01;
 const CMD_DONE_TIMEOUT_LOOPS: u32 = 2_000_000;
 const PROGRAM_CMDCTL_MAIN_SYSTEM_ADDR: u32 = 0x0000_0000;
 const PROGRAM_64_WITH_ECC_MASK: u32 = 0x1FF;
-
-#[inline(always)]
-fn elapsed_ms(since: Instant) -> u64 {
-    Instant::now().duration_since(since).as_millis()
-}
 
 #[inline(always)]
 #[unsafe(link_section = ".data")]

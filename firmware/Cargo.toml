@@ -20,7 +20,7 @@ defmt = "1.0.1"
 defmt-rtt = "1.0.0"
 rand_core = { version = "0.6.4", default-features = false}
 rand_core_09 = { package = "rand_core", version = "0.9", default-features = false}
-crypto = { version = "0.5.1", features = ["elliptic-curve", "digest"] }
+# crypto = { version = "0.5.1", features = ["elliptic-curve", "digest"] }
 pbkdf2 = { version = "0.12", default-features = false }
 sha2 = { version = "0.10", default-features = false }
 hmac = { version = "0.12", default-features = false }
@@ -40,15 +40,45 @@ serde = { version = "1.0.228", default-features = false, features = ["derive"] }
 defmt-test = "0.4.0"
 critical-section = "1.2.0"
 
+[build-dependencies]
+base64 = "0.22"
+hkdf = "0.12"
+pbkdf2 = "0.12"
+rand = "0.8"
+serde_json = "1"
+sha2 = "0.10"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+
 [dev-dependencies]
 defmt-test = "0.4.0"
 
+[profile.release.package."*"]
+opt-level = "s"
+
+[profile.release.package.x25519-dalek]
+opt-level = 3
+
+[profile.release.package.curve25519-dalek]
+opt-level = 3
+
+[profile.release.package.ed25519-dalek]
+opt-level = 3
+
+[profile.release.package.hkdf]
+opt-level = 3
+
+[profile.release.package.chacha20]
+opt-level = 3
+
+[profile.release.package.embassy-mspm0]
+opt-level = 3
 
 [profile.release]
-opt-level = "z"
+opt-level = 3
 codegen-units = 1
 lto = true
 debug = 2
+# strip = true
 
 [profile.dev]
 opt-level = "z"
