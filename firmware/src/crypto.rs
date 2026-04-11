@@ -4,15 +4,15 @@
 //! (see `aes_hardware_accel`). Hybrid (asymmetric) encryption layers
 //! X25519 ECDH + HKDF-SHA256 key derivation on top of the hardware GCM.
 
+use crate::GLOBAL_RNG;
 use crate::aes_hardware_accel::GcmEngine;
-use crate::secrets::NUM_PERMS;
-use crate::{GLOBAL_PUB_KEY, GLOBAL_RNG, GLOBAL_SHARED_SECRETS};
-use defmt::println;
+use crate::permission::EncryptKey;
+use crate::secrets;
 use heapless::Vec;
 use hkdf::Hkdf;
 use sha2::Sha256;
 // X25519 types for ECDH encryption/decryption
-use x25519_dalek::{PublicKey, SharedSecret, StaticSecret};
+use x25519_dalek::{PublicKey, StaticSecret};
 
 // Ed25519 types for signing/verification
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
@@ -32,12 +32,12 @@ pub const VERIFYING_KEY_SIZE: usize = 32;
 /// The size of an Ed25519 signature.
 pub const SIGNATURE_SIZE: usize = 64;
 
-/// There are two pre-computed shared secrets for every permission.
-pub const NUM_SHARED_SECRETS: usize = NUM_PERMS * 2;
-
 /// Spin-loop ceiling for AESADV ready-flag polling.
 /// Generous enough for multi-block payloads at 32 MHz.
 const POLL_LIMIT: u32 = 2_500_000;
+
+type Nonce = [u8; NONCE_SIZE];
+type AuthTag = [u8; AUTH_TAG_SIZE];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
 pub enum CryptoError {
@@ -94,18 +94,6 @@ pub struct AsymmetricEncryptedMetadata {
 pub struct SharedSecrets {
     pub public_key: PublicKey,
     pub shared_secret: [u8; 16],
-}
-
-pub fn get_secret_by_public_key(public_key: &PublicKey) -> Option<[u8; 16]> {
-    critical_section::with(|cs| {
-        let guard = GLOBAL_SHARED_SECRETS.borrow(cs).borrow();
-        let secrets = guard.as_ref()?;
-
-        secrets
-            .iter()
-            .find(|s| s.public_key.as_bytes() == public_key.as_bytes())
-            .map(|s| s.shared_secret)
-    })
 }
 
 // ─── Byte ↔ word conversion for AESADV registers ──────────────────
@@ -386,7 +374,7 @@ pub fn aes_gcm_encrypt_in_place(
     key: &[u8; 16],
     iv: &[u8; 12],
     associated_data: &[u8],
-) -> Result<[u8; AUTH_TAG_SIZE], CryptoError> {
+) -> Result<AuthTag, CryptoError> {
     let eng = GcmEngine::new();
 
     eng.load_key_128(key);
@@ -468,7 +456,7 @@ pub fn aes_gcm_decrypt_in_place(
     ciphertext: &mut [u8],
     key: &[u8; 16],
     iv: &[u8; 12],
-    auth_tag: &[u8; AUTH_TAG_SIZE],
+    auth_tag: &AuthTag,
     associated_data: &[u8],
 ) -> Result<(), CryptoError> {
     let eng = GcmEngine::new();
@@ -510,51 +498,21 @@ pub fn aes_gcm_decrypt_in_place(
 
 pub fn asymmetric_encrypt_in_place<const N: usize>(
     plaintext: &mut [u8],
-    public_key: &PublicKey,
-) -> Result<([u8; NONCE_SIZE], [u8; AUTH_TAG_SIZE], PublicKey), CryptoError> {
-    // Can just generate 32 bytes using random_bytes() and use that as the ephemeral secret
-    // let mut rng = SecureRng::new().map_err(|_| CryptoError::RngError)?;
-
-    // let ephemeral_secret = EphemeralSecret::random_from_rng(&mut rng);
-
-    // Creates a public key specifically for this batch of ciphertext. This public key gets sent
-    // along with the ciphertext and can be used to derive the secret key to decrypt it.
-
-    // let cipher_public_key = PublicKey::from(&ephemeral_secret);
-
-    // let secret = critical_section::with(|cs| {
-    //     GLOBAL_SECRET
-    //         .borrow(cs)
-    //         .borrow()
-    //         .clone()
-    //         .expect("crypto not initialized")
-    // });
-
-    println!("pub key: {:?}", public_key.as_bytes());
-    let aes_key = get_secret_by_public_key(public_key)
-        .expect("Public key not found in cached shared secrets!");
-
+    encrypt_key: &EncryptKey,
+) -> Result<(Nonce, AuthTag, PublicKey), CryptoError> {
     let nonce: [u8; 12] = critical_section::with(|cs| {
         GLOBAL_RNG
             .borrow(cs)
             .borrow_mut()
             .as_mut()
-            .expect("rng not initialised")
+            .expect("RNG not initialized!")
             .random_array()
     })
     .map_err(|_| CryptoError::RngError)?;
 
-    let auth_tag = aes_gcm_encrypt_in_place(plaintext, &aes_key, &nonce, &[])
+    let auth_tag = aes_gcm_encrypt_in_place(plaintext, encrypt_key, &nonce, &[])
         .map_err(|_| CryptoError::AesGcmEncryptError)?;
-    let pub_key = critical_section::with(|cs| {
-        *GLOBAL_PUB_KEY
-            .borrow(cs)
-            .borrow()
-            .as_ref()
-            .expect("pub key not initialised")
-    });
-
-    Ok((nonce, auth_tag, pub_key))
+    Ok((nonce, auth_tag, secrets::HSM_PUBLIC_KEY.into()))
 }
 
 /// Decrypts ciphertext produced by hybrid encryption. Recovers the
@@ -609,9 +567,8 @@ pub fn asymmetric_decrypt_in_place(
 /// (NOT an X25519 private key — those are for ECDH encryption).
 pub fn ecc_sign_file_digest(
     digest: &[u8],
-    signing_key_bytes: &[u8; SIGNING_KEY_SIZE],
+    signing_key: &SigningKey,
 ) -> Result<Signature, AuthError> {
-    let signing_key = SigningKey::from_bytes(signing_key_bytes);
     let signature: Signature = signing_key.sign(digest);
     Ok(signature)
 }
@@ -623,11 +580,8 @@ pub fn ecc_sign_file_digest(
 pub fn ecc_verify_file_digest(
     signature: &Signature,
     digest: &[u8],
-    verifying_key_bytes: &[u8; VERIFYING_KEY_SIZE],
+    verifying_key: &VerifyingKey,
 ) -> Result<(), AuthError> {
-    let verifying_key =
-        VerifyingKey::from_bytes(verifying_key_bytes).map_err(|_| AuthError::KeyImportFailed)?;
-
     verifying_key
         .verify(digest, signature)
         .map_err(|_| AuthError::VerificationFailed)

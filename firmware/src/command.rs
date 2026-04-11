@@ -11,8 +11,10 @@ use crate::crypto::{
     asymmetric_encrypt_in_place,
 };
 use crate::host::{HostUart, MsgType};
-use crate::permission::{self, PermissionType, get_private_key, get_public_key, has_permission};
-use crate::secrets::{PERMISSIONS, PIN_HASH, PIN_SALT};
+use crate::permission::{
+    self, PermissionType, get_receive_decrypt_key, get_receive_encrypt_key, has_permission,
+};
+use crate::secrets::{self, PIN_HASH, PIN_SALT};
 use crate::secure_filesystem::{
     self, FILE_IN_USE, FileError, FileMetadata, Filesystem, Flash, FsError, MAX_CONTENTS_SIZE,
     MAX_FILE_COUNT, MAX_NAME_SIZE, ProtectedFile, UUID_SIZE,
@@ -181,16 +183,15 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
 
     let group_id = file.group_id;
 
-    let read_key =
-        if let Some(bytes) = permission::get_private_key(file.group_id, PermissionType::Read) {
-            StaticSecret::from(bytes)
-        } else {
-            host.print_error(
-                &format!(64; "HSM has no permissions to read files from group: {:#x}", group_id)
-                    .unwrap(),
-            );
-            return;
-        };
+    let read_key = if let Some(bytes) = permission::get_read_decrypt_key(file.group_id) {
+        StaticSecret::from(bytes)
+    } else {
+        host.print_error(
+            &format!(64; "HSM has no permissions to read files from group: {:#x}", group_id)
+                .unwrap(),
+        );
+        return;
+    };
 
     if asymmetric_decrypt_in_place(
         &mut file.ciphertext,
@@ -227,7 +228,6 @@ fn cmd_write(
         core::ptr::write_volatile(SYST_CVR, 0); // clear current
         core::ptr::write_volatile(SYST_CSR, 0x05); // enable, processor clock, no interrupt
     }
-    let t0 = unsafe { core::ptr::read_volatile(SYST_CVR) };
 
     const PIN_OFF: usize = 0;
     const SLOT_OFF: usize = 6;
@@ -380,8 +380,8 @@ fn cmd_receive(
     }
 
     // Extract the nonce, authentication tag, public key, and ciphertext from the payload
-    let nonce = &buf[..NONCE_SIZE].try_into().unwrap();
-    let auth_tag = &buf[NONCE_SIZE..NONCE_SIZE + AUTH_TAG_SIZE]
+    let nonce: &[u8; 12] = &buf[..NONCE_SIZE].try_into().unwrap();
+    let auth_tag: &[u8; 16] = &buf[NONCE_SIZE..NONCE_SIZE + AUTH_TAG_SIZE]
         .try_into()
         .unwrap();
     let ciphertext_public_key = PublicKey::from(
@@ -396,20 +396,9 @@ fn cmd_receive(
         .try_into()
         .unwrap();
 
-    // if buf.len() != size_of::<AsymmetricEncrypted<MAX_PLAINTEXT_SIZE>>() {
-    //     host.print_error("Received file is incorrect size");
-    //     return;
-    // }
-    // let mut out = core::mem::MaybeUninit::<AsymmetricEncrypted<MAX_PLAINTEXT_SIZE>>::uninit();
-    // unsafe {
-    //     core::ptr::copy_nonoverlapping(buf.as_ptr(), out.as_mut_ptr() as *mut u8, buf.len());
-    // }
-    // let encrypted = unsafe { out.assume_init() };
-    //
-
     let mut successful = false;
-    for group in PERMISSIONS {
-        let receive_key = match get_private_key(group.group_id, PermissionType::Receive) {
+    for group in secrets::permissions() {
+        let receive_decrypt_key = match get_receive_decrypt_key(group.group_id) {
             Some(receive_key) => receive_key,
             None => continue,
         };
@@ -418,7 +407,7 @@ fn cmd_receive(
             nonce,
             &ciphertext_public_key,
             auth_tag,
-            &StaticSecret::from(receive_key),
+            &StaticSecret::from(receive_decrypt_key),
         ) {
             Ok(()) => successful = true,
             Err(CryptoError::AesGcmEncryptError) => {
@@ -614,19 +603,19 @@ fn cmd_listen(
                 }
             };
 
-            let receive_public_key =
-                if let Some(pk) = get_public_key(file.group_id, PermissionType::Receive) {
-                    PublicKey::from(pk)
-                } else {
+            let receive_encrypt_key = match get_receive_encrypt_key(file.group_id) {
+                Some(key) => key,
+                None => {
                     host.print_error("Invalid group ID");
                     return;
-                };
+                }
+            };
 
             let mut file_buf: [u8; size_of::<ProtectedFile>()] = transmute!(file);
             let (nonce, auth_tag, cipher_public_key) = match asymmetric_encrypt_in_place::<
                 { size_of::<ProtectedFile>() },
             >(
-                &mut file_buf, &receive_public_key
+                &mut file_buf, &receive_encrypt_key
             ) {
                 Ok(metadata) => metadata,
                 Err(_) => {

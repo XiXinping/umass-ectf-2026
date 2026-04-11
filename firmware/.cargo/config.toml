@@ -17,3 +17,6 @@ target = "thumbv6m-none-eabi"
 
 [env]
 DEFMT_LOG = "trace"
+SECRETS_FILE = "global.secrets"
+HSM_PIN = "abcdef"
+PERMISSIONS = "1234=RW-:4321=-WC:dead=R--:beef=RWC"
