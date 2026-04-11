@@ -21,6 +21,9 @@
 *.obj
 *.elf
 
+# ATS Output file (always name it output.zip)
+output.zip
+
 # Linker output
 *.ilk
 *.map

@@ -10,34 +10,6 @@ default-run = "ectf-2026"
 harness = false
 test = false
 
-[[test]]
-name = "pin_test"
-harness = false
-
-[[test]]
-name = "rng_test"
-harness = false
-
-[[test]]
-name = "gcm_test"
-harness = false
-
-[[test]]
-name = "ecc_test"
-harness = false
-
-[[test]]
-name = "secure_filesystem_test"
-harness = false
-
-[[test]]
-name = "signature_test"
-harness = false
-
-[[bin]]
-name = "ectf-2026"
-test = false
-
 [dependencies]
 embassy-mspm0 = { git = "https://github.com/embassy-rs/embassy", version = "0.1.0", features = ["mspm0l2228pn", "defmt", "time-driver-any"] }
 embassy-time = {git = "https://github.com/embassy-rs/embassy", version = "0.5.0", features = ["defmt"] }
