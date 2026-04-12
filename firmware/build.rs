@@ -1,6 +1,7 @@
 use std::{env, fs, io::Write, path::Path, path::PathBuf};
 
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
+use ed25519_dalek::{SigningKey, hazmat::ExpandedSecretKey};
 use hkdf::Hkdf;
 use pbkdf2::pbkdf2_hmac;
 use rand::RngCore;
@@ -231,13 +232,14 @@ fn main() {
     // ── Raw write key bytes (const) for runtime init ───────────────
     // We store the raw Ed25519 bytes as const so init_write_keys()
     // can construct the dalek types at runtime.
-    w!("struct RawWriteKeys {{");
-    w!("    group_id: u16,");
-    w!("    signing_key_bytes: Option<[u8; 32]>,");
-    w!("    verifying_key_bytes: [u8; 32],");
+    w!("pub struct RawWriteKeys {{");
+    w!("    pub group_id: u16,");
+    w!("    pub expanded_scalar: Option<[u8; 32]>,");
+    w!("    pub expanded_prefix: Option<[u8; 32]>,");
+    w!("    pub verifying_key_bytes: [u8; 32],");
     w!("}}");
     w!();
-    w!("const RAW_WRITE_KEYS: [RawWriteKeys; NUM_PERMS] = [");
+    w!("pub const RAW_WRITE_KEYS: [RawWriteKeys; NUM_PERMS] = [");
     for p in &perms {
         let gid_str = p.group_id.to_string();
         let gk = key_pairs
@@ -247,37 +249,33 @@ fn main() {
         let write_pub = b64_key(&gk["write"]["public"]);
         let write_priv: Option<[u8; 32]> = p.write.then(|| b64_key(&gk["write"]["private"]));
 
+        let (scalar_bytes, hash_prefix_bytes) = match write_priv {
+            Some(priv_bytes) => {
+                let expanded = ExpandedSecretKey::from(&priv_bytes);
+                (Some(expanded.scalar.to_bytes()), Some(expanded.hash_prefix))
+            }
+            None => (None, None),
+        };
+
         w!("    RawWriteKeys {{");
         w!("        group_id: {:#06x},", p.group_id);
-        match write_priv {
-            Some(k) => w!("        signing_key_bytes: Some({}),", hex_inline(&k)),
-            None => w!("        signing_key_bytes: None,"),
+        match (scalar_bytes, hash_prefix_bytes) {
+            (Some(scalar), Some(hash_prefix)) => {
+                w!("        expanded_scalar: Some({}),", hex_inline(&scalar));
+                w!(
+                    "        expanded_prefix: Some({}),",
+                    hex_inline(&hash_prefix)
+                );
+            }
+            _ => {
+                w!("        expanded_scalar: None,");
+                w!("        expanded_prefix: None,");
+            }
         }
+
         w!("        verifying_key_bytes: {},", hex_inline(&write_pub));
         w!("    }},");
     }
     w!("];");
     w!();
-
-    // ── init_write_keys() — runtime construction of dalek types ────
-    w!("pub fn init_write_keys() -> [WriteKeyPair; NUM_PERMS] {{");
-    w!("    let mut keys: [core::mem::MaybeUninit<WriteKeyPair>; NUM_PERMS] =");
-    w!("        unsafe {{ core::mem::MaybeUninit::uninit().assume_init() }};");
-    w!();
-    w!("    for (i, raw) in RAW_WRITE_KEYS.iter().enumerate() {{");
-    w!("        keys[i] = core::mem::MaybeUninit::new(WriteKeyPair {{");
-    w!("            group_id: raw.group_id,");
-    w!("            key_pair: SignatureKeyPair {{");
-    w!("                signing_key: raw.signing_key_bytes");
-    w!("                    .map(|b| SigningKey::from_bytes(&b)),");
-    w!("                verifying_key: VerifyingKey::from_bytes(");
-    w!("                    &raw.verifying_key_bytes,");
-    w!("                )");
-    w!("                .expect(\"bad verifying key in build-time data\"),");
-    w!("            }},");
-    w!("        }});");
-    w!("    }}");
-    w!();
-    w!("    unsafe {{ core::mem::transmute(keys) }}");
-    w!("}}");
 }
