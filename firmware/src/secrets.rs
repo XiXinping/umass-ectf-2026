@@ -1,5 +1,4 @@
-#[allow(static_mut_refs)]
-/// HSM secret material — generated at build time, initialised once at startup.
+// HSM secret material — generated at build time, initialised once at startup.
 
 // Pull in everything build.rs wrote
 include!(concat!(
@@ -11,15 +10,15 @@ use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
 
 // SAFETY: only written once during single-threaded init, read-only after
-struct SyncWrapper(UnsafeCell<MaybeUninit<[GroupPermission; NUM_PERMS]>>);
+struct SyncWrapper(UnsafeCell<MaybeUninit<[WriteKeyPair; NUM_PERMS]>>);
 unsafe impl Sync for SyncWrapper {}
 
-static PERM_STORE: SyncWrapper = SyncWrapper(UnsafeCell::new(MaybeUninit::uninit()));
+static WRITE_PERM_STORE: SyncWrapper = SyncWrapper(UnsafeCell::new(MaybeUninit::uninit()));
 
 pub fn init() {
-    unsafe { (*PERM_STORE.0.get()).write(init_permissions()) };
+    unsafe { (*WRITE_PERM_STORE.0.get()).write(init_write_keys()) };
 }
 
-pub fn permissions() -> &'static [GroupPermission; NUM_PERMS] {
-    unsafe { (*PERM_STORE.0.get()).assume_init_ref() }
+pub fn write_permissions() -> &'static [WriteKeyPair; NUM_PERMS] {
+    unsafe { (*WRITE_PERM_STORE.0.get()).assume_init_ref() }
 }

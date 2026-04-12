@@ -1,0 +1,607 @@
+ectf_2026::secrets::SyncWrapper (
+  core::cell::UnsafeCell<core::mem::maybe_uninit::MaybeUninit<[ectf_2026::permission::WriteKeyPair; 16]>> {
+    value: core::mem::maybe_uninit::MaybeUninit<[ectf_2026::permission::WriteKeyPair; 16]> {
+      uninit: (),
+      value: core::mem::manually_drop::ManuallyDrop<[ectf_2026::permission::WriteKeyPair; 16]> {
+        value: core::mem::maybe_dangling::MaybeDangling<[ectf_2026::permission::WriteKeyPair; 16]> (
+          [ectf_2026::permission::WriteKeyPair {
+              group_id: 48879,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::Some(ed25519_dalek::signing::SigningKey {
+                    secret_key: [181, 145, 137, 201, 125, 179, 69, 181, 150, 210, 245, 15, 29, 26, 16, 237, 255, 57, 128, 77, 38, 185, 97, 22, 246, 133, 181, 232, 91, 106, 190, 194],
+                    verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                      compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                        [61, 8, 183, 94, 232, 142, 108, 132, 81, 26, 98, 235, 246, 43, 205, 200, 205, 51, 29, 156, 87, 192, 236, 250, 40, 32, 117, 182, 55, 119, 205, 18]
+                      ),
+                      point: curve25519_dalek::edwards::EdwardsPoint {
+                        X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [44583267, 1213101, 10570345, 33520276, 2072724, 11409689, 43927297, 2280883, 59701130, 30233362]
+                        ),
+                        Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [13983383, 4053134, 53022979, 2593774, 63185456, 30014128, 49773700, 9026522, 23825344, 22242565]
+                        ),
+                        Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [49721072, 5609508, 40123624, 5198197, 52435871, 20726952, 61082910, 32527492, 50911325, 20994016]
+                        ),
+                        T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [24741575, 20645435, 47342110, 1517986, 34277068, 5931176, 47182264, 7967186, 66760274, 30514563]
+                        )
+                      }
+                    }
+                  }),
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [61, 8, 183, 94, 232, 142, 108, 132, 81, 26, 98, 235, 246, 43, 205, 200, 205, 51, 29, 156, 87, 192, 236, 250, 40, 32, 117, 182, 55, 119, 205, 18]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1902404, 2485922, 11709438, 7183496, 63361697, 11186043, 45445874, 12543082, 49330557, 19647777]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [45549629, 19118615, 55193741, 28793616, 52638895, 1913805, 39857102, 335709, 58419026, 4928988]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [56979864, 17705716, 58658703, 596841, 3147485, 31816242, 63250388, 17323531, 40336210, 1790696]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 2,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::None,
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [61, 100, 209, 128, 60, 22, 249, 3, 169, 50, 239, 50, 240, 154, 175, 249, 77, 134, 95, 186, 161, 192, 147, 108, 123, 171, 23, 212, 88, 50, 29, 99]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [12062836, 26033435, 49938368, 16340865, 53514328, 5381793, 3028268, 26583209, 37288886, 1663416]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [13722685, 4558624, 39133311, 25270137, 65453675, 6260301, 31477981, 24079762, 26034554, 25982153]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [39794850, 4765456, 48907096, 7819768, 36400781, 31768194, 23699465, 29294393, 54727516, 23488238]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 3,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::Some(ed25519_dalek::signing::SigningKey {
+                    secret_key: [199, 224, 75, 254, 77, 28, 191, 40, 9, 62, 230, 167, 66, 134, 214, 26, 197, 110, 222, 153, 153, 193, 47, 45, 129, 125, 234, 251, 17, 45, 11, 206],
+                    verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                      compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                        [124, 198, 36, 86, 110, 16, 89, 21, 126, 173, 76, 216, 15, 38, 1, 237, 194, 27, 78, 116, 121, 71, 250, 143, 33, 167, 128, 152, 184, 164, 62, 18]
+                      ),
+                      point: curve25519_dalek::edwards::EdwardsPoint {
+                        X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [57683086, 26161342, 4211867, 31095433, 7876898, 15116819, 33748596, 16124890, 53061394, 14016928]
+                        ),
+                        Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [65191216, 16991941, 20930881, 21461785, 35935527, 17897739, 32146533, 6595020, 42907047, 18838081]
+                        ),
+                        Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [62266720, 6821891, 15935193, 10021019, 6291165, 10297563, 43957204, 31705498, 65317451, 32701929]
+                        ),
+                        T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [41216981, 16816963, 12492276, 17088503, 40638698, 19817056, 3755211, 19259885, 34594566, 2584293]
+                        )
+                      }
+                    }
+                  }),
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [124, 198, 36, 86, 110, 16, 89, 21, 126, 173, 76, 216, 15, 38, 1, 237, 194, 27, 78, 116, 121, 71, 250, 143, 33, 167, 128, 152, 184, 164, 62, 18]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [19833340, 26134867, 27991609, 1457032, 34684222, 2822013, 5910639, 12500536, 5437815, 18309031]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [35964540, 4463509, 28295851, 8307301, 62129304, 5118914, 19119290, 14955007, 59344906, 4782738]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [30588104, 26628904, 14581450, 1514642, 20034021, 28424780, 34978917, 25839968, 4752580, 8530983]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 4,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::None,
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [69, 74, 225, 217, 63, 2, 203, 246, 170, 89, 146, 194, 240, 7, 52, 19, 226, 223, 222, 91, 37, 65, 112, 197, 166, 170, 123, 144, 191, 4, 146, 209]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [12823995, 24906381, 62263933, 8824875, 25716764, 8054656, 22239471, 1697159, 42887213, 8794793]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [31541829, 12619766, 53829337, 25564306, 5034015, 31383522, 2134701, 22337710, 66652090, 21383186]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [22125170, 7127034, 41232297, 22107144, 12511390, 33165055, 35228102, 10908109, 17115356, 12000985]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 5,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::None,
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [81, 36, 133, 16, 218, 93, 164, 224, 158, 50, 244, 139, 201, 57, 54, 45, 122, 12, 122, 132, 248, 237, 173, 198, 10, 215, 123, 97, 151, 150, 32, 176]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [58522131, 28648975, 20279003, 26326896, 40841776, 3406827, 62396733, 28329502, 58478176, 26373956]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [8725585, 18314884, 39050260, 5005217, 11852007, 7998586, 49740866, 14768341, 24516541, 12616282]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [6195604, 15688527, 21922710, 22519751, 35164926, 19473502, 59682849, 16910156, 65625052, 27952819]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 6,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::Some(ed25519_dalek::signing::SigningKey {
+                    secret_key: [185, 223, 87, 112, 49, 133, 224, 197, 200, 192, 193, 7, 208, 242, 65, 189, 159, 189, 200, 39, 126, 136, 58, 64, 217, 121, 113, 42, 214, 223, 204, 97],
+                    verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                      compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                        [81, 26, 3, 150, 208, 185, 120, 198, 229, 197, 60, 29, 175, 103, 217, 56, 60, 167, 152, 128, 240, 45, 237, 139, 18, 102, 171, 230, 84, 27, 228, 122]
+                      ),
+                      point: curve25519_dalek::edwards::EdwardsPoint {
+                        X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [46581364, 7307215, 2759647, 10380023, 30639718, 8981834, 48550688, 4755430, 13050774, 19214428]
+                        ),
+                        Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [61797107, 5868972, 19789463, 9416947, 17561540, 8196786, 54473931, 23405363, 42193958, 32845347]
+                        ),
+                        Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [6193914, 28572125, 23578886, 31103690, 63944772, 7274456, 39204710, 284184, 18327675, 8818361]
+                        ),
+                        T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [33629913, 2332789, 50438358, 4186558, 13834832, 29142965, 31971926, 18493846, 46633003, 3431310]
+                        )
+                      }
+                    }
+                  }),
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [81, 26, 3, 150, 208, 185, 120, 198, 229, 197, 60, 29, 175, 103, 217, 56, 60, 167, 152, 128, 240, 45, 237, 139, 18, 102, 171, 230, 84, 27, 228, 122]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [61025794, 11139334, 59083731, 10473614, 48202641, 18438282, 50756062, 15334821, 39587856, 7881097]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [33757777, 3044389, 12368079, 24701414, 14902686, 10004284, 43448384, 12734845, 21916342, 32215149]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [44393292, 5084463, 59093954, 20631687, 55951053, 25744116, 62028239, 10637110, 53580379, 29611801]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 7,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::Some(ed25519_dalek::signing::SigningKey {
+                    secret_key: [209, 151, 70, 2, 75, 23, 140, 189, 188, 141, 253, 43, 214, 220, 52, 179, 201, 244, 49, 95, 39, 103, 148, 145, 246, 147, 112, 121, 112, 169, 225, 238],
+                    verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                      compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                        [113, 147, 130, 212, 115, 231, 253, 247, 73, 98, 23, 134, 187, 215, 171, 167, 10, 20, 211, 219, 106, 202, 47, 4, 191, 132, 53, 43, 4, 47, 204, 19]
+                      ),
+                      point: curve25519_dalek::edwards::EdwardsPoint {
+                        X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [27970066, 26067890, 15752971, 18795500, 63503655, 15370750, 51768598, 6484441, 61925544, 16881047]
+                        ),
+                        Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [47235603, 18649809, 29882652, 31603651, 20508234, 8151207, 1141375, 9681092, 309973, 4793087]
+                        ),
+                        Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [21236361, 31618473, 20267965, 19726870, 58135440, 3727299, 29081300, 7649152, 41615416, 16921947]
+                        ),
+                        T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [48020489, 21478940, 43409296, 31854917, 16069414, 16478194, 21217676, 11707949, 52392593, 22953468]
+                        )
+                      }
+                    }
+                  }),
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [113, 147, 130, 212, 115, 231, 253, 247, 73, 98, 23, 134, 187, 215, 171, 167, 10, 20, 211, 219, 106, 202, 47, 4, 191, 132, 53, 43, 4, 47, 204, 19]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [66551316, 23375079, 41225732, 11790143, 11100618, 4458233, 5442348, 4487240, 44693528, 25592029]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [8557425, 24763637, 4800255, 31207611, 43954014, 30610442, 65353069, 9953413, 4371288, 5189820]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [44495904, 12912175, 22776882, 26897751, 46013244, 24380457, 61243126, 5524056, 24209147, 12277296]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 8,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::None,
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [64, 205, 35, 90, 100, 219, 122, 238, 7, 191, 81, 164, 49, 10, 191, 146, 107, 66, 125, 1, 15, 167, 127, 40, 221, 101, 26, 247, 105, 76, 60, 222]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [66343013, 3264071, 50486000, 22730649, 9222498, 10986407, 41736912, 20852430, 63540497, 3690189]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [35900736, 11983126, 65076687, 26026637, 38468648, 24986219, 64194432, 12297487, 44003750, 24703281]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [9569489, 24196314, 16954110, 14423783, 22929526, 11682443, 6317329, 24254262, 6218418, 4139620]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 9,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::Some(ed25519_dalek::signing::SigningKey {
+                    secret_key: [79, 196, 44, 223, 168, 114, 248, 221, 172, 189, 200, 112, 29, 115, 89, 66, 234, 29, 224, 29, 64, 200, 126, 62, 188, 29, 222, 208, 228, 24, 107, 233],
+                    verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                      compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                        [15, 81, 159, 119, 5, 140, 213, 177, 43, 125, 90, 32, 81, 24, 231, 15, 63, 115, 75, 219, 152, 49, 60, 55, 97, 92, 33, 171, 59, 231, 14, 177]
+                      ),
+                      point: curve25519_dalek::edwards::EdwardsPoint {
+                        X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [16251858, 25724320, 28518489, 11373518, 56925179, 3135740, 35561541, 12227377, 64670751, 28212865]
+                        ),
+                        Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [13512246, 31482410, 30934222, 19320000, 39567137, 14520051, 48197614, 15306112, 40594786, 3117681]
+                        ),
+                        Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [63498137, 17717998, 38740894, 20053938, 43747153, 5909082, 33303436, 24915211, 47611125, 18120568]
+                        ),
+                        T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [60004810, 27535582, 36431303, 1074399, 19926903, 7291202, 35236606, 15834967, 65298359, 9700913]
+                        )
+                      }
+                    }
+                  }),
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [15, 81, 159, 119, 5, 140, 213, 177, 43, 125, 90, 32, 81, 24, 231, 15, 63, 115, 75, 219, 152, 49, 60, 55, 97, 92, 33, 171, 59, 231, 14, 177]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [26345879, 2810050, 29860176, 2869120, 30376401, 20298007, 35589628, 20419330, 10539829, 15027974]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [60772623, 23265629, 61175354, 8979155, 4168801, 21721919, 35179629, 25962215, 62566933, 12860316]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [52805055, 23649281, 54754474, 16068724, 38523873, 7003498, 33884029, 9315606, 52021752, 10423023]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 10,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::Some(ed25519_dalek::signing::SigningKey {
+                    secret_key: [108, 154, 147, 174, 64, 160, 69, 88, 0, 128, 66, 180, 229, 30, 134, 250, 49, 221, 183, 241, 244, 19, 131, 170, 53, 55, 133, 12, 155, 99, 237, 188],
+                    verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                      compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                        [194, 148, 223, 73, 206, 37, 229, 150, 138, 195, 97, 114, 51, 205, 222, 83, 41, 161, 127, 181, 30, 211, 33, 27, 254, 63, 171, 192, 239, 156, 162, 104]
+                      ),
+                      point: curve25519_dalek::edwards::EdwardsPoint {
+                        X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [2738984, 11300464, 13119357, 26239760, 7002223, 21731989, 14490001, 6734702, 28634337, 23872114]
+                        ),
+                        Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [28331483, 10880653, 40968730, 29022997, 7505910, 12471266, 43406167, 20015318, 27179713, 20430678]
+                        ),
+                        Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [19184350, 4479202, 6972380, 30266459, 48286127, 28897486, 63112792, 4873041, 26251799, 10755476]
+                        ),
+                        T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [45487865, 8799176, 42145753, 4531186, 11962603, 27285904, 47974950, 22235035, 48898163, 21775406]
+                        )
+                      }
+                    }
+                  }),
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [194, 148, 223, 73, 206, 37, 229, 150, 138, 195, 97, 114, 51, 205, 222, 83, 41, 161, 127, 181, 30, 211, 33, 27, 254, 63, 171, 192, 239, 156, 162, 104]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [24876584, 10360079, 39055008, 6573812, 5736025, 24764157, 23344797, 15018538, 22636837, 33277349]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [31429826, 21590930, 7426780, 26972942, 21986100, 25141545, 15306586, 33538916, 50072243, 27429491]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [39160180, 24172403, 64838390, 28433157, 54243399, 5360239, 22959015, 6453549, 17668615, 6055014]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 11,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::None,
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [76, 66, 19, 37, 39, 157, 38, 203, 196, 227, 60, 101, 143, 108, 242, 224, 137, 172, 145, 145, 54, 166, 190, 38, 114, 100, 145, 48, 241, 95, 204, 35]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [7697106, 28942032, 3070301, 14496479, 64997313, 5743396, 19513873, 23213924, 16602228, 12465690]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [18039372, 27740617, 7903588, 8071655, 58968498, 26324105, 55778120, 9323735, 51579158, 9384319]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [43745915, 24797480, 39966303, 19412831, 1479325, 5300364, 61521501, 22883333, 24476671, 12099955]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 12,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::Some(ed25519_dalek::signing::SigningKey {
+                    secret_key: [165, 204, 10, 255, 254, 68, 60, 173, 54, 145, 185, 179, 199, 124, 60, 208, 24, 103, 4, 19, 250, 119, 245, 27, 144, 121, 19, 236, 215, 138, 77, 109],
+                    verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                      compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                        [65, 240, 115, 226, 50, 87, 11, 115, 220, 118, 223, 58, 240, 87, 90, 161, 9, 74, 136, 245, 242, 34, 24, 129, 162, 194, 98, 231, 30, 148, 191, 80]
+                      ),
+                      point: curve25519_dalek::edwards::EdwardsPoint {
+                        X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [38323138, 2541053, 47991922, 7175659, 38911859, 6155, 28001890, 19099249, 52705407, 9049572]
+                        ),
+                        Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [49721259, 5395689, 42187894, 3752746, 18430002, 18940382, 14936976, 5278791, 4214532, 21897508]
+                        ),
+                        Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [35651528, 5288891, 53755196, 4738091, 50915625, 4916912, 34105501, 1367663, 7105334, 14789464]
+                        ),
+                        T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [54757283, 16322794, 9208810, 11869764, 9475616, 18097465, 57679720, 29045312, 61997934, 137662]
+                        )
+                      }
+                    }
+                  }),
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [65, 240, 115, 226, 50, 87, 11, 115, 220, 118, 223, 58, 240, 87, 90, 161, 9, 74, 136, 245, 242, 34, 24, 129, 162, 194, 98, 231, 30, 148, 191, 80]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [36355676, 11771383, 62281865, 5273762, 22156037, 4100475, 63568800, 28754146, 43954105, 13018866]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [41152577, 14011576, 47943265, 25286395, 42297695, 25709065, 1145210, 5525539, 32405036, 21167696]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [43102046, 16669290, 51241086, 22886802, 46708717, 7037376, 66711162, 27558086, 24473060, 13976434]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 13,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::Some(ed25519_dalek::signing::SigningKey {
+                    secret_key: [146, 102, 27, 80, 63, 177, 152, 176, 156, 74, 242, 250, 69, 185, 208, 28, 212, 15, 21, 77, 137, 151, 60, 253, 156, 17, 139, 157, 43, 171, 136, 145],
+                    verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                      compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                        [15, 76, 156, 101, 82, 204, 47, 46, 38, 109, 8, 149, 82, 200, 132, 40, 95, 164, 53, 52, 147, 99, 224, 169, 245, 31, 85, 166, 202, 37, 65, 28]
+                      ),
+                      point: curve25519_dalek::edwards::EdwardsPoint {
+                        X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [40658169, 9570250, 14364896, 5081002, 57436428, 29812057, 45120918, 14573848, 63718096, 6062452]
+                        ),
+                        Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [31252286, 20436529, 5981954, 24704895, 46463673, 20982916, 59323205, 13466321, 32080840, 30566205]
+                        ),
+                        Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [64849132, 30613151, 18304571, 12009777, 56419997, 9544732, 50712794, 7700123, 9149101, 2010102]
+                        ),
+                        T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [18874523, 29743662, 20797473, 13193901, 50776964, 25724545, 65533605, 12856909, 56373971, 27304996]
+                        )
+                      }
+                    }
+                  }),
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [15, 76, 156, 101, 82, 204, 47, 46, 38, 109, 8, 149, 82, 200, 132, 40, 95, 164, 53, 52, 147, 99, 224, 169, 245, 31, 85, 166, 202, 37, 65, 28]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1023720, 8169208, 59603527, 26730132, 56445810, 3692567, 44733093, 15938615, 21423219, 33241465]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [27020303, 32707737, 27575749, 9742403, 10621729, 3515487, 3262874, 33469756, 11167057, 7406743]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [3126622, 26134841, 24682712, 18312009, 59127056, 6293548, 41678470, 15805629, 65650933, 8853466]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 14,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::None,
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [172, 119, 73, 219, 153, 223, 12, 72, 157, 255, 45, 65, 198, 166, 27, 196, 69, 148, 197, 1, 183, 89, 64, 144, 72, 141, 25, 72, 61, 228, 136, 40]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [30339648, 17239606, 58225831, 28794408, 50916354, 31752815, 62429356, 22402905, 50179137, 3948832]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [55146412, 20440694, 66300161, 3279215, 51408539, 29725765, 2939776, 27857416, 64258456, 10625936]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [67008138, 2713211, 45567276, 26491450, 49281301, 9879520, 25742754, 24451235, 26715673, 13138837]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 15,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::Some(ed25519_dalek::signing::SigningKey {
+                    secret_key: [219, 65, 114, 91, 91, 95, 33, 205, 17, 227, 44, 254, 65, 155, 236, 78, 10, 199, 81, 151, 152, 57, 223, 184, 40, 214, 57, 211, 151, 227, 38, 137],
+                    verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                      compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                        [233, 141, 226, 191, 94, 89, 224, 172, 175, 149, 233, 196, 61, 183, 215, 10, 236, 113, 155, 142, 75, 117, 33, 103, 71, 201, 18, 240, 13, 24, 228, 91]
+                      ),
+                      point: curve25519_dalek::edwards::EdwardsPoint {
+                        X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [55692646, 25874566, 1582388, 4534482, 38944149, 31040569, 64958589, 27523952, 29049364, 16013594]
+                        ),
+                        Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [13471469, 21425154, 52548529, 10066683, 15664654, 19829302, 62030279, 32807754, 57885783, 6464231]
+                        ),
+                        Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [64117277, 14921469, 58614265, 13835758, 13526092, 16887060, 9246231, 5139293, 57647664, 5926888]
+                        ),
+                        T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [32804078, 23122095, 11692679, 14890788, 36888891, 32534246, 38321555, 22393137, 51111937, 32321944]
+                        )
+                      }
+                    }
+                  }),
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [233, 141, 226, 191, 94, 89, 224, 172, 175, 149, 233, 196, 61, 183, 215, 10, 236, 113, 155, 142, 75, 117, 33, 103, 71, 201, 18, 240, 13, 24, 228, 91]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [28037938, 20728180, 43219170, 10653540, 46676999, 15683824, 23615113, 8673781, 2605976, 18806865]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [65179113, 1464239, 45479324, 32384844, 2842332, 10187244, 12232135, 19459300, 14614828, 24088672]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [41628072, 28831047, 51930208, 2777170, 6502209, 15555372, 60413154, 17919694, 22742770, 225807]
+                    )
+                  }
+                }
+              }
+            }, ectf_2026::permission::WriteKeyPair {
+              group_id: 16,
+              key_pair: ectf_2026::permission::SignatureKeyPair {
+                signing_key: core::option::Option<ed25519_dalek::signing::SigningKey>::Some(ed25519_dalek::signing::SigningKey {
+                    secret_key: [26, 209, 44, 66, 131, 106, 158, 113, 94, 137, 29, 149, 186, 193, 220, 135, 165, 194, 40, 198, 242, 253, 145, 187, 13, 167, 101, 95, 233, 69, 234, 60],
+                    verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                      compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                        [7, 226, 147, 58, 180, 12, 204, 106, 138, 0, 82, 12, 195, 51, 156, 170, 41, 200, 202, 76, 30, 237, 6, 94, 148, 244, 115, 146, 145, 40, 23, 1]
+                      ),
+                      point: curve25519_dalek::edwards::EdwardsPoint {
+                        X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [15041349, 29371291, 67099409, 14009482, 12264476, 16423219, 24696559, 16773042, 18510328, 3470565]
+                        ),
+                        Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [54192217, 24335551, 60749103, 28948690, 58869685, 2768391, 18068818, 18142332, 2901393, 787620]
+                        ),
+                        Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [43337306, 9895325, 14829643, 22450439, 37797135, 7490324, 35365384, 31923137, 28019452, 6583327]
+                        ),
+                        T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                          [47641531, 9910118, 28113836, 6198394, 13661226, 20239491, 34762694, 3982074, 42340596, 24336770]
+                        )
+                      }
+                    }
+                  }),
+                verifying_key: ed25519_dalek::verifying::VerifyingKey {
+                  compressed: curve25519_dalek::edwards::CompressedEdwardsY (
+                    [7, 226, 147, 58, 180, 12, 204, 106, 138, 0, 82, 12, 195, 51, 156, 170, 41, 200, 202, 76, 30, 237, 6, 94, 148, 244, 115, 146, 145, 40, 23, 1]
+                  ),
+                  point: curve25519_dalek::edwards::EdwardsPoint {
+                    X: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [24592592, 3090047, 1784218, 14131636, 41406553, 18259263, 13358123, 5882927, 28562414, 19886462]
+                    ),
+                    Y: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [43246087, 16985358, 1133913, 1598096, 44724431, 13289513, 58101542, 9604032, 18425663, 285858]
+                    ),
+                    Z: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                    ),
+                    T: curve25519_dalek::backend::serial::u32::field::FieldElement2625 (
+                      [28045945, 24097947, 33484167, 26929049, 1052416, 2966634, 44102644, 3216815, 31980340, 13839172]
+                    )
+                  }
+                }
+              }
+            }]
+        )
+      }
+    }
+  }
+)
+
