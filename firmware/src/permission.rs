@@ -1,4 +1,5 @@
 use crate::secrets;
+use defmt::println;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 
 /// Pre-computed AES key created by performing Diffie-Hellman key exchange using the public key
@@ -58,53 +59,82 @@ pub struct GroupPermission {
     pub read_perm: bool,
     pub write_perm: bool,
     pub receive_perm: bool,
-    pub keys: KeyPairSet,
+}
+
+#[derive(Clone)]
+pub struct ReadKeyPair {
+    pub group_id: u16,
+    pub key_pair: EncryptionKeyPair,
+}
+
+#[derive(Clone)]
+pub struct ReceiveKeyPair {
+    pub group_id: u16,
+    pub key_pair: EncryptionKeyPair,
+}
+
+#[derive(Clone)]
+pub struct WriteKeyPair {
+    pub group_id: u16,
+    pub key_pair: SignatureKeyPair,
 }
 
 pub fn get_signing_key(group_id: u16) -> Option<SigningKey> {
-    secrets::permissions()
+    // for perm in secrets::write_permissions() {
+    //     let signing_key_print = match perm.key_pair.signing_key.clone() {
+    //         Some(signing_key) => signing_key.to_bytes(),
+    //         None => [0; 32],
+    //     };
+    //     println!(
+    //         "{}: {:?} and {:?}",
+    //         perm.group_id,
+    //         signing_key_print,
+    //         perm.key_pair.verifying_key.to_bytes()
+    //     );
+    // }
+    secrets::write_permissions()
         .iter()
         .find(|g| g.group_id == group_id)
-        .and_then(|g| g.keys.write_keys.signing_key.clone())
+        .and_then(|g| g.key_pair.signing_key.clone())
 }
 
 pub fn get_verifying_key(group_id: u16) -> Option<VerifyingKey> {
-    secrets::permissions()
+    secrets::write_permissions()
         .iter()
         .find(|g| g.group_id == group_id)
-        .and_then(|g| Some(g.keys.write_keys.verifying_key))
+        .and_then(|g| Some(g.key_pair.verifying_key))
 }
 
 pub fn get_read_encrypt_key(group_id: u16) -> Option<EncryptKey> {
-    secrets::permissions()
+    secrets::READ_KEYS
         .iter()
         .find(|g| g.group_id == group_id)
-        .map(|g| g.keys.read_keys.encrypt_key)
+        .map(|g| g.key_pair.encrypt_key)
 }
 
 pub fn get_read_decrypt_key(group_id: u16) -> Option<DecryptKey> {
-    secrets::permissions()
+    secrets::READ_KEYS
         .iter()
         .find(|g| g.group_id == group_id)
-        .map(|g| g.keys.read_keys.decrypt_key)
+        .map(|g| g.key_pair.decrypt_key)
 }
 
 pub fn get_receive_encrypt_key(group_id: u16) -> Option<EncryptKey> {
-    secrets::permissions()
+    secrets::RECEIVE_KEYS
         .iter()
         .find(|g| g.group_id == group_id)
-        .map(|g| g.keys.receive_keys.encrypt_key)
+        .map(|g| g.key_pair.encrypt_key)
 }
 
 pub fn get_receive_decrypt_key(group_id: u16) -> Option<DecryptKey> {
-    secrets::permissions()
+    secrets::RECEIVE_KEYS
         .iter()
         .find(|g| g.group_id == group_id)
-        .map(|g| g.keys.receive_keys.decrypt_key)
+        .map(|g| g.key_pair.decrypt_key)
 }
 
 pub fn has_permission(group_id: u16, permission_type: PermissionType) -> bool {
-    secrets::permissions()
+    secrets::PERMISSIONS
         .iter()
         .find(|g| g.group_id == group_id)
         .map(|g| match permission_type {

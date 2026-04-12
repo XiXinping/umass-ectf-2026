@@ -5,7 +5,7 @@ use crate::crypto::{
     AUTH_TAG_SIZE, NONCE_SIZE, PUBLIC_KEY_SIZE, SIGNATURE_SIZE, asymmetric_decrypt_in_place,
     asymmetric_encrypt_in_place, ecc_sign_file_digest, ecc_verify_file_digest,
 };
-use crate::permission::{self, get_verifying_key};
+use crate::permission::{self, get_verifying_key, has_permission};
 
 use core::mem;
 use defmt::{info, println};
@@ -253,6 +253,10 @@ impl ProtectedFile {
         } else {
             contents
         };
+
+        // if !has_permission(group_id, PermissionType::Write) {
+        //     return Err(FileError::NoWritePermission);
+        // }
 
         let write_key =
             permission::get_signing_key(group_id).ok_or(FileError::NoWritePermission)?;

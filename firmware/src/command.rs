@@ -397,7 +397,7 @@ fn cmd_receive(
         .unwrap();
 
     let mut successful = false;
-    for group in secrets::permissions() {
+    for group in secrets::PERMISSIONS {
         let receive_decrypt_key = match get_receive_decrypt_key(group.group_id) {
             Some(receive_key) => receive_key,
             None => continue,
