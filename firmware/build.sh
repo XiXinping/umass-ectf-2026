@@ -5,7 +5,7 @@ set -e
 BUILDDIR=${1:-/tmp/build}
 TARGET=${TARGET:-thumbv6m-none-eabi}
 BIN_NAME=${BIN_NAME:-ectf-2026}
-SECRETS_FILE=/secrets/global.secrets
+export SECRETS_FILE="/secrets/global.secrets"
 mkdir -p "$BUILDDIR"
 
 # 1. Generate secrets (existing logic)
