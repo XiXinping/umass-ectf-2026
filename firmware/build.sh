@@ -5,10 +5,11 @@ set -e
 BUILDDIR=${1:-/tmp/build}
 TARGET=${TARGET:-thumbv6m-none-eabi}
 BIN_NAME=${BIN_NAME:-embassy-mspm0-l2228-examples}
+SECRETS_FILE=/secrets/global.secrets
 mkdir -p "$BUILDDIR"
 
 # 1. Generate secrets (existing logic)
-python3 secrets_to_rust_file.py /secrets/global.secrets ${HSM_PIN} ${PERMISSIONS}
+# python3 secrets_to_rust_file.py /secrets/global.secrets ${HSM_PIN} ${PERMISSIONS}
 
 # 2. Compile the firmware
 # Build one explicit binary to avoid building extra bin targets.
