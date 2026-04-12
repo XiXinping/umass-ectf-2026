@@ -5,6 +5,7 @@
 //!
 //! Flow control: ACK expected every 256 bytes for non-debug messages.
 
+use defmt::println;
 use embassy_mspm0::mode::Blocking;
 use embassy_mspm0::uart::Uart;
 
