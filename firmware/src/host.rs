@@ -170,7 +170,9 @@ impl<'d> HostUart<'d> {
 
     /// Send an ACK message (header only, no payload, no response expected).
     pub fn write_ack(&mut self) -> MsgStatus {
-        self.write_packet(MsgType::Ack, &[])
+        self.write_packet(MsgType::Ack, &[]);
+        println!("Sent ACK");
+        MsgStatus::Ok
     }
 
     /// Send a complete packet.

@@ -65,8 +65,9 @@ fn main() -> ! {
         *GLOBAL_RNG.borrow(cs).borrow_mut() = Some(rng);
     });
 
+    let mut buf = [0u8; MAX_MSG_SIZE];
     loop {
-        let mut buf = [0u8; MAX_MSG_SIZE];
+        
         match host.read_packet(&mut buf, MAX_MSG_SIZE as u16) {
             Ok((msg_type, len)) => {
                 host.print_debug("Got cmd:");
