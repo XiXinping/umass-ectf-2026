@@ -44,9 +44,6 @@ fn main() -> ! {
     let mut config = Config::default();
     config.baudrate = 115200;
 
-    // Initialize the HSM's secrets
-    secrets::init();
-
     // UART0 — host/control interface
     let uart0 = unwrap!(Uart::new_blocking(p.UART0, p.PA11, p.PA10, config));
     let mut host = HostUart::new(uart0);

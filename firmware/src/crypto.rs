@@ -8,14 +8,18 @@ use crate::GLOBAL_RNG;
 use crate::aes_hardware_accel::GcmEngine;
 use crate::permission::EncryptKey;
 use crate::secrets;
+use curve25519_dalek::Scalar;
 use heapless::Vec;
 use hkdf::Hkdf;
-use sha2::Sha256;
+use sha2::{Sha256, Sha512};
 // X25519 types for ECDH encryption/decryption
 use x25519_dalek::{PublicKey, StaticSecret};
 
 // Ed25519 types for signing/verification
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{
+    Signature, Signer, SigningKey, Verifier, VerifyingKey,
+    hazmat::{ExpandedSecretKey, raw_sign},
+};
 
 /// GCM operates on 128-bit (16-byte) blocks regardless of key size.
 const GCM_BLOCK_BYTES: usize = 16;
@@ -565,12 +569,27 @@ pub fn asymmetric_decrypt_in_place(
 ///
 /// `signing_key_bytes` must be a 32-byte Ed25519 private key
 /// (NOT an X25519 private key — those are for ECDH encryption).
-pub fn ecc_sign_file_digest(
-    digest: &[u8],
-    signing_key: &SigningKey,
-) -> Result<Signature, AuthError> {
-    let signature: Signature = signing_key.sign(digest);
-    Ok(signature)
+pub fn ecc_sign_file_digest(digest: &[u8], group_id: u16) -> Result<Signature, AuthError> {
+    let raw = secrets::RAW_WRITE_KEYS
+        .iter()
+        .find(|k| k.group_id == group_id)
+        .ok_or(AuthError::KeyImportFailed)?;
+
+    let scalar_bytes = raw.expanded_scalar.ok_or(AuthError::KeyImportFailed)?;
+    let prefix = raw.expanded_prefix.ok_or(AuthError::KeyImportFailed)?;
+
+    // Both of these are cheap — no EC point math
+    // Scalar: integer mod reduction (~µs)
+    // VerifyingKey: point decompression (~small vs signing)
+    let expanded = ExpandedSecretKey {
+        scalar: Scalar::from_bytes_mod_order(scalar_bytes),
+        hash_prefix: prefix,
+    };
+
+    let vk = VerifyingKey::from_bytes(&raw.verifying_key_bytes)
+        .map_err(|_| AuthError::KeyImportFailed)?;
+
+    Ok(raw_sign::<Sha512>(&expanded, digest, &vk))
 }
 
 /// Verify an Ed25519 signature over a file digest.

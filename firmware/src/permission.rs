@@ -1,6 +1,7 @@
 use crate::secrets;
+use curve25519_dalek::scalar::Scalar;
 use defmt::println;
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::{SigningKey, VerifyingKey, hazmat::ExpandedSecretKey};
 
 /// Pre-computed AES key created by performing Diffie-Hellman key exchange using the public key
 /// of the group and the HSM's local secret. Used for asymmetric decryption.
@@ -79,30 +80,45 @@ pub struct WriteKeyPair {
     pub key_pair: SignatureKeyPair,
 }
 
-pub fn get_signing_key(group_id: u16) -> Option<SigningKey> {
-    // for perm in secrets::write_permissions() {
-    //     let signing_key_print = match perm.key_pair.signing_key.clone() {
-    //         Some(signing_key) => signing_key.to_bytes(),
-    //         None => [0; 32],
-    //     };
-    //     println!(
-    //         "{}: {:?} and {:?}",
-    //         perm.group_id,
-    //         signing_key_print,
-    //         perm.key_pair.verifying_key.to_bytes()
-    //     );
-    // }
-    secrets::write_permissions()
+// pub fn get_signing_key(group_id: u16) -> Option<SigningKey> {
+//     // for perm in secrets::write_permissions() {
+//     //     let signing_key_print = match perm.key_pair.signing_key.clone() {
+//     //         Some(signing_key) => signing_key.to_bytes(),
+//     //         None => [0; 32],
+//     //     };
+//     //     println!(
+//     //         "{}: {:?} and {:?}",
+//     //         perm.group_id,
+//     //         signing_key_print,
+//     //         perm.key_pair.verifying_key.to_bytes()
+//     //     );
+//     // }
+//     secrets::write_permissions()
+//         .iter()
+//         .find(|g| g.group_id == group_id)
+//         .and_then(|g| g.key_pair.signing_key.clone())
+// }
+
+/// Retrieve the expanded secret key used for creating signatures.
+pub fn get_expanded_secret_key(group_id: u16) -> Option<ExpandedSecretKey> {
+    let raw = secrets::RAW_WRITE_KEYS
         .iter()
-        .find(|g| g.group_id == group_id)
-        .and_then(|g| g.key_pair.signing_key.clone())
+        .find(|k| k.group_id == group_id)?;
+
+    let scalar_bytes = raw.expanded_scalar?;
+    let prefix = raw.expanded_prefix?;
+
+    Some(ExpandedSecretKey {
+        scalar: Scalar::from_bytes_mod_order(scalar_bytes),
+        hash_prefix: prefix,
+    })
 }
 
 pub fn get_verifying_key(group_id: u16) -> Option<VerifyingKey> {
-    secrets::write_permissions()
+    let raw = secrets::RAW_WRITE_KEYS
         .iter()
-        .find(|g| g.group_id == group_id)
-        .and_then(|g| Some(g.key_pair.verifying_key))
+        .find(|k| k.group_id == group_id)?;
+    Some(VerifyingKey::from_bytes(&raw.verifying_key_bytes).ok()?)
 }
 
 pub fn get_read_encrypt_key(group_id: u16) -> Option<EncryptKey> {

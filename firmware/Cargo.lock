@@ -335,6 +335,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "critical-section",
+ "curve25519-dalek",
  "defmt",
  "defmt-rtt",
  "defmt-test",

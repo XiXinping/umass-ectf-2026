@@ -9,11 +9,12 @@ use crate::permission::{self, get_verifying_key, has_permission};
 
 use core::mem;
 use defmt::{info, println};
+use ed25519_dalek::hazmat::raw_sign;
 use ed25519_dalek::{Signature, Signer, Verifier};
 use embassy_time::Instant;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
+use sha2::{Sha256, Sha512};
 use x25519_dalek::{PublicKey, StaticSecret};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, transmute, transmute_mut};
 
@@ -197,7 +198,7 @@ impl ProtectedFile {
         let digest = mac.finalize().into_bytes();
 
         write_verifying_key
-            .verify(&digest, &self.signature())
+            .verify_strict(&digest, &self.signature())
             .map_err(|_| FileError::InvalidSignature)
     }
     // Attempt to return the decrypted contents of the file.
@@ -254,12 +255,10 @@ impl ProtectedFile {
             contents
         };
 
-        // if !has_permission(group_id, PermissionType::Write) {
-        //     return Err(FileError::NoWritePermission);
-        // }
-
         let write_key =
-            permission::get_signing_key(group_id).ok_or(FileError::NoWritePermission)?;
+            permission::get_expanded_secret_key(group_id).ok_or(FileError::NoWritePermission)?;
+        let verifying_key =
+            permission::get_verifying_key(group_id).ok_or(FileError::NoWritePermission)?;
         let read_encrypt_key =
             permission::get_read_encrypt_key(group_id).ok_or(FileError::InvalidGroupId)?;
 
@@ -273,7 +272,7 @@ impl ProtectedFile {
             .map_err(|_| FileError::EncryptError)?;
 
         let digest = Self::digest(group_id, uuid, name, &out.ciphertext);
-        let signature = write_key.sign(&digest);
+        let signature = raw_sign::<Sha512>(&write_key, &digest, &verifying_key);
         out.in_use = FILE_IN_USE;
         out.group_id = group_id;
         out.uuid = uuid;
