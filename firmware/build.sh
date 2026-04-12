@@ -8,10 +8,7 @@ BIN_NAME=${BIN_NAME:-ectf-2026}
 export SECRETS_FILE="/secrets/global.secrets"
 mkdir -p "$BUILDDIR"
 
-# 1. Generate secrets (existing logic)
-# python3 secrets_to_rust_file.py /secrets/global.secrets ${HSM_PIN} ${PERMISSIONS}
-
-# 2. Compile the firmware
+# Compile the firmware
 # Build one explicit binary to avoid building extra bin targets.
 cargo build --release --target "$TARGET" --bin "$BIN_NAME"
 
