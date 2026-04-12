@@ -306,7 +306,6 @@ impl<'d> HostUart<'d> {
 
     /// Send an error message to the host.
     pub fn print_error(&mut self, msg: &str) {
-        let _ = self.write_ack();
         let _ = self.write_packet(MsgType::Error, msg.as_bytes());
     }
 
