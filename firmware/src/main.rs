@@ -40,6 +40,12 @@ fn main() -> ! {
     unsafe { set_vtor(0x0000_6000) };
 
     let p = embassy_mspm0::init(Default::default());
+    // Power on and reset the AESADV hardware accelerator
+    let aes_gcm_engine = ectf_2026::aes_hardware_accel::GcmEngine::new();
+    aes_gcm_engine.enable_power();
+    aes_gcm_engine.write_rstctl(0x03);
+    cortex_m::asm::delay(100);
+    aes_gcm_engine.enable_power();
 
     let mut config = Config::default();
     config.baudrate = 115200;
@@ -64,13 +70,7 @@ fn main() -> ! {
     critical_section::with(|cs: critical_section::CriticalSection<'_>| {
         *GLOBAL_RNG.borrow(cs).borrow_mut() = Some(rng);
     });
-
-    // Power on AESADV hardware accelerator
-    let aes = aesadv::AesAdv::new();
-    aes.enable_power();
-    aes.write_rstctl(0x03); // reset assert + clear sticky
-    cortex_m::asm::delay(100);
-    aes.enable_power();
+    
 
     let mut buf = [0u8; MAX_MSG_SIZE];
     loop {
