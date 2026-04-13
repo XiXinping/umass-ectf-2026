@@ -4,6 +4,7 @@ use embassy_time::Instant;
 use heapless::{Vec, format};
 use x25519_dalek::{PublicKey, StaticSecret};
 use zerocopy::transmute;
+use zerocopy::transmute_mut;
 
 use crate::authentication::{PIN_LENGTH, SecurityStatus, verify_pin};
 use crate::crypto::{
