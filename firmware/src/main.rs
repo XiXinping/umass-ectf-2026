@@ -65,6 +65,13 @@ fn main() -> ! {
         *GLOBAL_RNG.borrow(cs).borrow_mut() = Some(rng);
     });
 
+    // Power on AESADV hardware accelerator
+    let aes = aesadv::AesAdv::new();
+    aes.enable_power();
+    aes.write_rstctl(0x03); // reset assert + clear sticky
+    cortex_m::asm::delay(100);
+    aes.enable_power();
+
     let mut buf = [0u8; MAX_MSG_SIZE];
     loop {
         
