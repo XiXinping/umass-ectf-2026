@@ -143,7 +143,7 @@ impl FatEntry {
 }
 
 /// On-flash protected file structure
-#[repr(Rust, packed)]
+#[repr(C, packed)] // C means no reordering of fields, packed means no padding between fields
 #[derive(PartialEq, Debug, Immutable, KnownLayout, FromBytes, IntoBytes)]
 pub struct ProtectedFile {
     // Metadata

@@ -455,12 +455,12 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
         }
         SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
     };
-
+ 
     // Send empty interrogate request to neighbor
     let _ = uart1.write_packet(MsgType::Interrogate, &[]);
-
-    // Read list_response_t from neighbor (up to 284 bytes)
-    let (cmd, recv_len) = match uart1.read_packet(buf, 0xFFFF) {
+ 
+    // Read list response from neighbor (standard binary format)
+    let (cmd, recv_len) = match uart1.read_packet(buf, buf.len() as u16) {
         Ok(v) => v,
         Err(_) => {
             host.print_error(
@@ -469,40 +469,51 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
             return;
         }
     };
-
+ 
     if cmd != MsgType::Interrogate {
         host.print_error("Interrogate: opcode mismatch");
         return;
     }
-
-    let buf = &buf[..recv_len as usize];
-    let metadata: Vec<FileMetadata, MAX_FILE_COUNT> = match postcard::from_bytes(buf) {
-        Ok(m) => m,
-        Err(_) => {
-            host.print_error("Failed to decode interrogation!");
-            return;
-        }
-    };
-
-    let mut out_buf: Vec<u8, { size_of::<FileMetadata>() * MAX_FILE_COUNT + 4 }> = Vec::new();
-    out_buf.extend_from_slice(&[0u8; 4]).unwrap();
-    let mut num_files = 0u32;
-    for meta in metadata {
-        if has_permission(meta.group_id, PermissionType::Receive) {
-            num_files += 1;
-        }
-        let mut buf = [0u8; size_of::<FileMetadata>()];
-        out_buf
-            .extend_from_slice(postcard::to_slice(&meta, &mut buf).unwrap())
-            .unwrap();
+ 
+    // ── Parse binary response: nfiles(4) + entries(35 each) ──
+    const ENTRY_SIZE: usize = 1 + 2 + MAX_NAME_SIZE; // 35
+    const HEADER_SIZE: usize = 4;
+ 
+    let recv_len = recv_len as usize;
+    if recv_len < HEADER_SIZE {
+        host.print_error("Interrogate: response too short");
+        return;
     }
-    out_buf[..4].copy_from_slice(&num_files.to_le_bytes());
-    // out_buf.extend_from_slice(&metadata.len().to_le_bytes());
-    // out_buf.(metadata);
-    // let file: ProtectedFile = postcard::from_bytes(&buf[..len]);
-
-    // Forward the list response to host as-is
-    let _ = host.write_packet(MsgType::Interrogate, &out_buf);
+ 
+    let total_files = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
+ 
+    // ── Filter to files this HSM has receive permission for ──
+    // Compact in-place: copy qualifying entries forward
+    let mut num_receivable: u32 = 0;
+    for i in 0..total_files {
+        let src_off = HEADER_SIZE + i * ENTRY_SIZE;
+        if src_off + ENTRY_SIZE > recv_len {
+            break;
+        }
+ 
+        let group_id = u16::from_le_bytes([buf[src_off + 1], buf[src_off + 2]]);
+        if has_permission(group_id, PermissionType::Receive) {
+            let dst_off = HEADER_SIZE + (num_receivable as usize) * ENTRY_SIZE;
+            if dst_off != src_off {
+                // Shift entry forward (safe: dst < src, no overlap)
+                for j in 0..ENTRY_SIZE {
+                    buf[dst_off + j] = buf[src_off + j];
+                }
+            }
+            num_receivable += 1;
+        }
+    }
+ 
+    // Overwrite nfiles header with filtered count
+    buf[..4].copy_from_slice(&num_receivable.to_le_bytes());
+ 
+    let total_len = HEADER_SIZE + (num_receivable as usize) * ENTRY_SIZE;
+    let _ = host.write_packet(MsgType::Interrogate, &buf[..total_len]);
 }
 
 #[inline(never)]
@@ -510,12 +521,12 @@ fn cmd_listen(
     host: &mut HostUart,
     uart1: &mut HostUart,
     _pkt_len: u16,
-    _buf: &mut [u8],
+    buf: &mut [u8], // ← was _buf; now used as scratch space
     flash: &impl Flash,
     fs: &Filesystem,
 ) {
     // Receive a packet from neighboring HSM via UART1
-    let mut uart_buf = [0u8; 41]; // sizeof(receive_request_t): slot(1) + permissions(5*8)
+    let mut uart_buf = [0u8; 41];
     let max_len = uart_buf.len() as u16;
     let (cmd, _read_len) = match uart1.read_packet(&mut uart_buf, max_len) {
         Ok(v) => v,
@@ -524,20 +535,21 @@ fn cmd_listen(
             return;
         }
     };
-
+ 
     match cmd {
         MsgType::Interrogate => {
             // Build file list response in buf:
-            //   n_files(4 bytes u32 LE) + per-file entries (slot(1) + group_id(2) + name(32) = 35 each)
-            // const ENTRY_SIZE: usize = 1 + 2 + MAX_NAME_SIZE; // 35
-            // const HEADER_SIZE: usize = 4; // n_files u32
-            // const FILE_HDR_SIZE: usize = 4 + 2 + MAX_NAME_SIZE; // 38
-
-            // let mut nfiles: u32 = 0;
-            // let resp_off = FILE_HDR_SIZE; // scratch area for flash reads
-
-            // Store the metadata of all files in the filesystem
-            let mut metadata: Vec<FileMetadata, 8> = Vec::new();
+            //   n_files(4 bytes u32 LE) + per-file entries (35 bytes each)
+            // Entry: slot(1) + group_id(2) + name(32)
+            const ENTRY_SIZE: usize = 1 + 2 + MAX_NAME_SIZE; // 35
+            const HEADER_SIZE: usize = 4; // n_files u32
+ 
+            // On-flash ProtectedFile starts with: in_use(4) + group_id(2) + name(32) = 38
+            const FILE_HDR_SIZE: usize = 4 + 2 + MAX_NAME_SIZE; // 38
+ 
+            let mut nfiles: u32 = 0;
+            let resp_off = FILE_HDR_SIZE; // response starts after scratch area
+ 
             for slot in 0..(MAX_FILE_COUNT as u8) {
                 let entry = match fs.get_file_metadata(slot) {
                     Ok(e) => e,
@@ -546,39 +558,45 @@ fn cmd_listen(
                 if entry.is_empty() {
                     continue;
                 }
-
-                let file = match fs.read_file(slot, flash) {
-                    Ok(file) => file,
-                    Err(_) => continue,
-                };
-
-                if file.in_use != FILE_IN_USE {
+ 
+                // Read only the first 38 bytes (file header) from flash
+                flash.read(entry.flash_addr, &mut buf[..FILE_HDR_SIZE]);
+ 
+                let in_use = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
+                if in_use != FILE_IN_USE {
                     continue;
                 }
-                let _ = metadata.push(file.metadata(slot));
+ 
+                // Extract group_id and name from scratch area
+                let group_lo = buf[4];
+                let group_hi = buf[5];
+                let mut name = [0u8; MAX_NAME_SIZE];
+                name.copy_from_slice(&buf[6..6 + MAX_NAME_SIZE]);
+ 
+                // Append entry to response area (after scratch)
+                let entry_off = resp_off + HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
+                buf[entry_off] = slot;
+                buf[entry_off + 1] = group_lo;
+                buf[entry_off + 2] = group_hi;
+                buf[entry_off + 3..entry_off + 3 + MAX_NAME_SIZE].copy_from_slice(&name);
+ 
+                nfiles += 1;
             }
-
-            // let mut encrypted_metadata: Vec<AsymmetricEncrypted, 8> = Vec::new();
-
-            // buf[resp_off..resp_off + 4].copy_from_slice(&nfiles.to_le_bytes());
-
-            // let total_len = HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
-            // let mut buf: Vec<u8, { size_of::<FileMetadata>() * MAX_FILE_COUNT }> = Vec::new();
-            // let _ = buf.extend_from_slice(&metadata.len().to_le_bytes());
-            let mut buf = [0u8; size_of::<FileMetadata>() * MAX_FILE_COUNT];
-            if postcard::to_slice(&metadata, &mut buf).is_err() {
-                host.print_error("Failed to send file metadata");
-                return;
-            };
-
-            let _ = uart1.write_packet(MsgType::Interrogate, &buf);
+ 
+            // Write nfiles header
+            buf[resp_off..resp_off + 4].copy_from_slice(&nfiles.to_le_bytes());
+ 
+            let total_len = HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
+            let _ = uart1.write_packet(MsgType::Interrogate, &buf[resp_off..resp_off + total_len]);
         }
         MsgType::Receive => {
-            let slot = uart_buf[0]; // receive_request_t.slot
-
-            let file = match fs.read_file(slot, flash) {
-                Ok(f) => f,
-                Err(FsError::EmptySlot) => {
+            let slot = uart_buf[0];
+ 
+            // Read file into a stack-allocated ProtectedFile (ONE copy only)
+            let mut file = ProtectedFile::default();
+            match fs.read_file_in(&mut file, slot, flash) {
+                Ok(()) => (),
+                Err(FsError::EmptySlot) | Err(FsError::InvalidFatEntry) => {
                     host.print_error(&format!(20; "Slot {} is empty", slot).unwrap());
                     return;
                 }
@@ -595,7 +613,7 @@ fn cmd_listen(
                     return;
                 }
             };
-
+ 
             let receive_encrypt_key = match get_receive_encrypt_key(file.group_id) {
                 Some(key) => key,
                 None => {
@@ -603,12 +621,13 @@ fn cmd_listen(
                     return;
                 }
             };
-
-            let mut file_buf: [u8; size_of::<ProtectedFile>()] = transmute!(file);
+ 
+            // Encrypt in-place via transmute_mut! to avoid extra copies and allocations
+            let file_buf: &mut [u8; size_of::<ProtectedFile>()] = transmute_mut!(&mut file);
             let (nonce, auth_tag, cipher_public_key) = match asymmetric_encrypt_in_place::<
                 { size_of::<ProtectedFile>() },
             >(
-                &mut file_buf, &receive_encrypt_key
+                file_buf, &receive_encrypt_key
             ) {
                 Ok(metadata) => metadata,
                 Err(_) => {
@@ -616,12 +635,10 @@ fn cmd_listen(
                     return;
                 }
             };
-
-            // Convert the result of the encryption into a Vec of raw bytes
-
+ 
             uart1.write_packet_chunks(
                 MsgType::Receive,
-                &[&nonce, &auth_tag, &cipher_public_key.to_bytes(), &file_buf],
+                &[&nonce, &auth_tag, &cipher_public_key.to_bytes(), file_buf],
             );
         }
         _ => {
@@ -629,7 +646,7 @@ fn cmd_listen(
             return;
         }
     }
-
+ 
     // Success — blank message to host
     let _ = host.write_packet(MsgType::Listen, &[]);
 }
