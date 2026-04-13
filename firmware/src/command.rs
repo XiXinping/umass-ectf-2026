@@ -175,8 +175,8 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
             host.print_error("Invalid signature");
             return;
         }
-        Err(_) => {
-            host.print_error("Something has gone wrong!");
+        Err(e) => {
+            host.print_error(&format!(64; "Read failed: {}", e).unwrap());
             return;
         }
     };
@@ -283,20 +283,14 @@ fn cmd_write(
             );
             return;
         }
-        Err(FileError::BullshitError) => {
-            host.print_error("Something stupid went wrong.");
-            return;
-        }
-        Err(_) => {
-            host.print_error("Something really bad happened.");
+        Err(e) => {
+            host.print_error(&format!(64; "File creation failed: {}", e).unwrap());
             return;
         }
     };
 
-    if let Err(_e) = fs.write_file(slot, &file, uuid, flash) {
-        // host.print_debug("write_file failed:");
-        // host.print_hex_debug(&[e as u8]);
-        host.print_error("Flash write failed");
+    if let Err(e) = fs.write_file(slot, &file, uuid, flash) {
+        host.print_error(&format!(64; "Flash write failed: {}", e).unwrap());
         return;
     }
 
@@ -435,11 +429,10 @@ fn cmd_receive(
 
     // Write received file to local flash
     let flash_write_start = Instant::now();
-    if fs
+    if let Err(e) = fs
         .write_file_timed(write_slot, &file, file.uuid, flash, flash_write_start)
-        .is_err()
     {
-        host.print_error("Writing received file failed");
+        host.print_error(&format!(64; "Writing received file failed: {}", e).unwrap());
         return;
     }
 
@@ -597,8 +590,8 @@ fn cmd_listen(
                     host.print_error("File has invalid signature!");
                     return;
                 }
-                Err(_) => {
-                    host.print_error("Something has gone wrong!");
+                Err(e) => {
+                    host.print_error(&format!(64; "Read failed: {}", e).unwrap());
                     return;
                 }
             };

@@ -63,6 +63,21 @@ pub enum CryptoError {
     HardwareTimeout,
 }
 
+impl core::fmt::Display for CryptoError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            CryptoError::InvalidInput => write!(f, "Crypto input too large"),
+            CryptoError::RngError => write!(f, "RNG failure"),
+            CryptoError::AsymmetricKeyError => write!(f, "Asymmetric key derivation failed"),
+            CryptoError::BadAuthTag => write!(f, "Bad GCM auth tag"),
+            CryptoError::BadAesKey => write!(f, "Bad AES key"),
+            CryptoError::AesGcmEncryptError => write!(f, "AES-GCM encrypt failed"),
+            CryptoError::AesGcmDecryptError => write!(f, "AES-GCM decrypt failed"),
+            CryptoError::HardwareTimeout => write!(f, "AESADV hardware timeout"),
+        }
+    }
+}
+
 /// Error types for authentication operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthError {

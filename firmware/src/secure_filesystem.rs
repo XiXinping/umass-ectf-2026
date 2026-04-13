@@ -2,8 +2,9 @@
 // provides a secure interface for file operations
 
 use crate::crypto::{
-    AUTH_TAG_SIZE, NONCE_SIZE, PUBLIC_KEY_SIZE, SIGNATURE_SIZE, asymmetric_decrypt_in_place,
-    asymmetric_encrypt_in_place, ecc_sign_file_digest, ecc_verify_file_digest,
+    AUTH_TAG_SIZE, CryptoError, NONCE_SIZE, PUBLIC_KEY_SIZE, SIGNATURE_SIZE,
+    asymmetric_decrypt_in_place, asymmetric_encrypt_in_place, ecc_sign_file_digest,
+    ecc_verify_file_digest,
 };
 use crate::permission::{self, get_verifying_key, has_permission};
 
@@ -62,24 +63,53 @@ pub enum FsError {
     InvalidSignature,
 }
 
+impl core::fmt::Display for FsError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            FsError::InvalidSlot => write!(f, "Slot index out of range"),
+            FsError::EmptySlot => write!(f, "Slot is empty"),
+            FsError::NameTooLong => write!(f, "File name too long"),
+            FsError::ContentsTooLarge => write!(f, "File contents exceed max size"),
+            FsError::InvalidFatEntry => write!(f, "Invalid FAT entry"),
+            FsError::FlashWriteError => write!(f, "Flash write failed"),
+            FsError::InvalidSignature => write!(f, "Invalid file signature"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileError {
     /// HSM does not have valid read permission for a protected file's group.
     NoReadPermission,
     /// HSM does not have valid write permission for a protected file's group.
     NoWritePermission,
-    /// Error while decrypting encrypted contents.
-    DecryptError,
     /// Invalid group ID.
     InvalidGroupId,
     /// Invalid file signature
     InvalidSignature,
-    /// Error while encrypting file contents.
-    EncryptError,
     /// Error while generating file signature.
     GenSignatureError,
-    /// Something that really shouldn't have failed ended up failing.
-    BullshitError,
+    /// A crypto operation failed — wraps the underlying CryptoError.
+    Crypto(CryptoError),
+}
+
+impl From<CryptoError> for FileError {
+    fn from(e: CryptoError) -> Self {
+        FileError::Crypto(e)
+    }
+}
+
+impl core::fmt::Display for FileError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            FileError::NoReadPermission => write!(f, "No read permission for group"),
+            FileError::NoWritePermission => write!(f, "No write permission for group"),
+            FileError::InvalidGroupId => write!(f, "Invalid group ID"),
+            FileError::InvalidSignature => write!(f, "Invalid file signature"),
+            FileError::GenSignatureError => write!(f, "Signature generation failed"),
+            FileError::Crypto(e) => write!(f, "Crypto error: {}", e),
+        }
+    }
 }
 
 // ─── Flash abstraction trait ────────────────────────────────────────
@@ -228,8 +258,7 @@ impl ProtectedFile {
             &ciphertext_public_key,
             &auth_tag,
             &StaticSecret::from(read_key_bytes),
-        )
-        .map_err(|_| FileError::DecryptError)?;
+        )?;
         Ok(UnprotectedFile {
             in_use: self.in_use,
             group_id: self.group_id,
@@ -268,8 +297,7 @@ impl ProtectedFile {
             asymmetric_encrypt_in_place::<MAX_CONTENTS_SIZE>(
                 &mut out.ciphertext,
                 &read_encrypt_key,
-            )
-            .map_err(|_| FileError::EncryptError)?;
+            )?;
 
         let digest = Self::digest(group_id, uuid, name, &out.ciphertext);
         let signature = raw_sign::<Sha512>(&write_key, &digest, &verifying_key);
