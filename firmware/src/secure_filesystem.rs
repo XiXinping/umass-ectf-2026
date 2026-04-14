@@ -57,6 +57,10 @@ pub enum FsError {
     ContentsTooLarge,
     /// FAT entry contains an invalid flash address or length.
     InvalidFatEntry,
+    /// FAT entry is empty when trying to read a file from it.
+    FatEntryEmpty,
+    /// Length of file in FAT entry is larger than the max size.
+    FatEntryTooFat,
     /// Flash write failed.
     FlashWriteError,
     /// Invalid signature
@@ -71,6 +75,8 @@ impl core::fmt::Display for FsError {
             FsError::NameTooLong => write!(f, "File name too long"),
             FsError::ContentsTooLarge => write!(f, "File contents exceed max size"),
             FsError::InvalidFatEntry => write!(f, "Invalid FAT entry"),
+            FsError::FatEntryEmpty => write!(f, "FAT entry empty"),
+            FsError::FatEntryTooFat => write!(f, "Length of FAT entry too large"),
             FsError::FlashWriteError => write!(f, "Flash write failed"),
             FsError::InvalidSignature => write!(f, "Invalid file signature"),
         }
@@ -293,11 +299,10 @@ impl ProtectedFile {
 
         out.ciphertext[..contents.len()].copy_from_slice(contents);
 
-        let (nonce, auth_tag, cipher_public_key) =
-            asymmetric_encrypt_in_place::<MAX_CONTENTS_SIZE>(
-                &mut out.ciphertext,
-                &read_encrypt_key,
-            )?;
+        let (nonce, auth_tag, cipher_public_key) = asymmetric_encrypt_in_place::<MAX_CONTENTS_SIZE>(
+            &mut out.ciphertext,
+            &read_encrypt_key,
+        )?;
 
         let digest = Self::digest(group_id, uuid, name, &out.ciphertext);
         let signature = raw_sign::<Sha512>(&write_key, &digest, &verifying_key);
@@ -534,12 +539,12 @@ impl Filesystem {
 
         let entry = &self.fat[idx];
         if entry.is_empty() {
-            return Err(FsError::InvalidFatEntry);
+            return Err(FsError::FatEntryEmpty);
         }
 
         let len = entry.length as usize;
         if len > MAX_SERIALIZED_FILE {
-            return Err(FsError::InvalidFatEntry);
+            return Err(FsError::FatEntryTooFat);
         }
         let mut buf = [0u8; size_of::<ProtectedFile>()];
         // Read from flash into bytes
@@ -564,12 +569,12 @@ impl Filesystem {
         let entry = &self.fat[idx];
 
         if entry.is_empty() {
-            return Err(FsError::InvalidFatEntry);
+            return Err(FsError::FatEntryEmpty);
         }
 
         let len = entry.length as usize;
         if len > MAX_SERIALIZED_FILE {
-            return Err(FsError::InvalidFatEntry);
+            return Err(FsError::FatEntryTooFat);
         }
         let buf: &mut [u8; size_of::<ProtectedFile>()] = transmute_mut!(out);
         // Read from flash into bytes

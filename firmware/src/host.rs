@@ -58,6 +58,18 @@ pub enum MsgStatus {
     UartError(i32),
 }
 
+impl core::fmt::Display for MsgStatus {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            MsgStatus::Ok => write!(f, "Message status ok"),
+            MsgStatus::BadPtr => write!(f, "Bad pointer"),
+            MsgStatus::NoAck => write!(f, "No ACK"),
+            MsgStatus::BadLen => write!(f, "Bad length"),
+            MsgStatus::UartError(err_num) => write!(f, "UART Error: {}", err_num),
+        }
+    }
+}
+
 /// Packed message header: magic (1) + cmd (1) + len (2) = 4 bytes
 #[repr(C, packed)]
 #[derive(Clone, Copy, Default)]

@@ -22,7 +22,7 @@ use crate::secure_filesystem::{
 };
 
 pub const TRANSFER_PAYLOAD_SIZE: usize =
-    size_of::<ProtectedFile>() + NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE;
+    size_of::<ProtectedFile>() + NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE + 2;
 
 /// Dispatch a received command to the appropriate handler.
 #[inline(never)]
@@ -342,8 +342,8 @@ fn cmd_receive(
     // Read response: nonce(12) + auth_tag(16) + pubkey(32) + encrypted ProtectedFile
     let (cmd, recv_len) = match uart1.read_packet(buf, buf.len() as u16) {
         Ok(v) => v,
-        Err(_) => {
-            host.print_error("Receive: read from neighbor failed");
+        Err(e) => {
+            host.print_error(&format!(128; "Receive: Read from neighbor failed. {}", e).unwrap());
             return;
         }
     };
@@ -361,61 +361,45 @@ fn cmd_receive(
     // ── Copy the 60-byte crypto header out of buf before we modify it ──
     const CRYPTO_HDR: usize = NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE; // 60
 
+    let group_id = u16::from_le_bytes([buf[0], buf[1]]);
     let mut nonce_copy = [0u8; NONCE_SIZE];
-    nonce_copy.copy_from_slice(&buf[..NONCE_SIZE]);
+    nonce_copy.copy_from_slice(&buf[2..NONCE_SIZE + 2]);
 
     let mut auth_tag_copy = [0u8; AUTH_TAG_SIZE];
-    auth_tag_copy.copy_from_slice(&buf[NONCE_SIZE..NONCE_SIZE + AUTH_TAG_SIZE]);
+    auth_tag_copy.copy_from_slice(&buf[2 + NONCE_SIZE..2 + NONCE_SIZE + AUTH_TAG_SIZE]);
 
     let mut pubkey_bytes = [0u8; PUBLIC_KEY_SIZE];
     pubkey_bytes.copy_from_slice(
-        &buf[NONCE_SIZE + AUTH_TAG_SIZE..NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE],
+        &buf[2 + NONCE_SIZE + AUTH_TAG_SIZE..2 + NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE],
     );
     let ciphertext_public_key = PublicKey::from(pubkey_bytes);
 
     // ── Shift ciphertext to start of buf so it aligns with ProtectedFile ──
     let ct_size = size_of::<ProtectedFile>();
-    buf.copy_within(CRYPTO_HDR..CRYPTO_HDR + ct_size, 0);
+    buf.copy_within(2 + CRYPTO_HDR..2 + CRYPTO_HDR + ct_size, 0);
 
     // ── Decrypt in-place in buf[..ct_size] ──
     let ciphertext = &mut buf[..ct_size];
 
-    let mut successful = false;
-    for group in secrets::PERMISSIONS {
-        let receive_decrypt_key = match get_receive_decrypt_key(group.group_id) {
-            Some(receive_key) => receive_key,
-            None => continue,
-        };
-        match asymmetric_decrypt_in_place(
-            ciphertext,
-            &nonce_copy,
-            &ciphertext_public_key,
-            &auth_tag_copy,
-            &StaticSecret::from(receive_decrypt_key),
-        ) {
-            Ok(()) => {
-                successful = true;
-                break;
-            }
-            Err(CryptoError::AesGcmEncryptError) => {
-                // Wrong key — re-shift original ciphertext back for next attempt.
-                // Since decrypt_in_place may have corrupted buf, we need the
-                // original ciphertext. But asymmetric_decrypt_in_place with a
-                // wrong key should leave the buffer unmodified on tag mismatch
-                // (AES-GCM decryption checks tag before returning plaintext).
-                // If your implementation DOES modify the buffer on failure,
-                // you'll need to copy the ciphertext before the loop instead.
-                continue;
-            }
-            Err(_) => {
-                host.print_error("Unable to decrypt received file!");
-                return;
-            }
-        };
-    }
-    if !successful {
-        host.print_error("HSM does not have permission to receive file!");
-        return;
+    let receive_decrypt_key = match get_receive_decrypt_key(group_id) {
+        Some(receive_key) => receive_key,
+        None => {
+            host.print_error("HSM does not have permission to receive file!");
+            return;
+        }
+    };
+    match asymmetric_decrypt_in_place(
+        ciphertext,
+        &nonce_copy,
+        &ciphertext_public_key,
+        &auth_tag_copy,
+        &StaticSecret::from(receive_decrypt_key),
+    ) {
+        Ok(()) => (),
+        Err(e) => {
+            host.print_error(&format!(128; "Unable to decrypt received file! {}", e).unwrap());
+            return;
+        }
     };
 
     // ── Reinterpret buf as ProtectedFile without copying ──
@@ -470,9 +454,9 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
     // Read list response from neighbor (standard binary format)
     let (cmd, recv_len) = match uart1.read_packet(buf, buf.len() as u16) {
         Ok(v) => v,
-        Err(_) => {
+        Err(e) => {
             host.print_error(
-                "Interrogate: read from neighbor failed! Have you tried enhanced interrogation?",
+                &format!(128; "Interrogate: Read from neighbor failed! Have you tried enhanced interrogation? {}", e).unwrap(),
             );
             return;
         }
@@ -538,8 +522,8 @@ fn cmd_listen(
     let max_len = uart_buf.len() as u16;
     let (cmd, _read_len) = match uart1.read_packet(&mut uart_buf, max_len) {
         Ok(v) => v,
-        Err(_) => {
-            host.print_error("Listen: read from neighbor failed");
+        Err(e) => {
+            host.print_error(&format!(128; "Listen: Read from neighbor failed. {}", e).unwrap());
             return;
         }
     };
@@ -625,7 +609,9 @@ fn cmd_listen(
                 }
             };
 
-            let receive_encrypt_key = match get_receive_encrypt_key(file.group_id) {
+            let group_id = file.group_id;
+
+            let receive_encrypt_key = match get_receive_encrypt_key(group_id) {
                 Some(key) => key,
                 None => {
                     host.print_error("Invalid group ID");
@@ -649,7 +635,13 @@ fn cmd_listen(
 
             uart1.write_packet_chunks(
                 MsgType::Receive,
-                &[&nonce, &auth_tag, &cipher_public_key.to_bytes(), file_buf],
+                &[
+                    &group_id.to_le_bytes(),
+                    &nonce,
+                    &auth_tag,
+                    &cipher_public_key.to_bytes(),
+                    file_buf,
+                ],
             );
         }
         _ => {
