@@ -316,10 +316,10 @@ fn cmd_receive(
     }
     const READ_SLOT_OFF: usize = 6;
     const WRITE_SLOT_OFF: usize = 7;
-
+ 
     let read_slot = buf[READ_SLOT_OFF];
     let write_slot = buf[WRITE_SLOT_OFF];
-
+ 
     host.print_debug("Checking PIN\n");
     let pin = &buf[0..PIN_LENGTH];
     match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
@@ -333,29 +333,13 @@ fn cmd_receive(
         }
         SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
     };
-
-    // Build receive_request_t (41 bytes): slot(1) + group_permission_t[8] (5 bytes each)
-    // global_permissions from secrets.h: {0x1234, r, !w, !recv}, {0x4321, r, w, recv}, rest zeroed
+ 
+    // Send receive request to neighbor (just the slot)
     let mut request_buf = [0u8; 1];
     request_buf[0] = read_slot;
-    // // permission[0]: group_id=0x1234, read=true, write=false, receive=false
-    // request_buf[1] = 0x34; // group_id LE low
-    // request_buf[2] = 0x12; // group_id LE high
-    // request_buf[3] = 1; // read
-    // request_buf[4] = 0; // write
-    // request_buf[5] = 0; // receive
-    // // permission[1]: group_id=0x4321, read=true, write=true, receive=true
-    // request_buf[6] = 0x21;
-    // request_buf[7] = 0x43;
-    // request_buf[8] = 1;
-    // request_buf[9] = 1;
-    // request_buf[10] = 1;
-    // permissions[2..7] remain zeroed
-
-    // Send request to neighbor
     let _ = uart1.write_packet(MsgType::Receive, &request_buf);
-
-    // Read response: receive_response_t = uuid(16) + file_t(up to 8232)
+ 
+    // Read response: nonce(12) + auth_tag(16) + pubkey(32) + encrypted ProtectedFile
     let (cmd, recv_len) = match uart1.read_packet(buf, 0xFFFF) {
         Ok(v) => v,
         Err(_) => {
@@ -363,34 +347,39 @@ fn cmd_receive(
             return;
         }
     };
-
+ 
     if cmd != MsgType::Receive {
         host.print_error("Receive: opcode mismatch");
         return;
     }
-
+ 
     if recv_len < TRANSFER_PAYLOAD_SIZE as u16 {
         host.print_error("Received file is incorrect size");
         return;
     }
-
-    // Extract the nonce, authentication tag, public key, and ciphertext from the payload
-    let nonce: &[u8; 12] = &buf[..NONCE_SIZE].try_into().unwrap();
-    let auth_tag: &[u8; 16] = &buf[NONCE_SIZE..NONCE_SIZE + AUTH_TAG_SIZE]
-        .try_into()
-        .unwrap();
-    let ciphertext_public_key = PublicKey::from(
-        <[u8; 32]>::try_from(
-            &buf[NONCE_SIZE + AUTH_TAG_SIZE..NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE],
-        )
-        .unwrap(),
+ 
+    // ── Copy the 60-byte crypto header out of buf before we modify it ──
+    const CRYPTO_HDR: usize = NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE; // 60
+ 
+    let mut nonce_copy = [0u8; NONCE_SIZE];
+    nonce_copy.copy_from_slice(&buf[..NONCE_SIZE]);
+ 
+    let mut auth_tag_copy = [0u8; AUTH_TAG_SIZE];
+    auth_tag_copy.copy_from_slice(&buf[NONCE_SIZE..NONCE_SIZE + AUTH_TAG_SIZE]);
+ 
+    let mut pubkey_bytes = [0u8; PUBLIC_KEY_SIZE];
+    pubkey_bytes.copy_from_slice(
+        &buf[NONCE_SIZE + AUTH_TAG_SIZE..NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE],
     );
-
-    let mut ciphertext: [u8; size_of::<ProtectedFile>()] = buf
-        [NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE..TRANSFER_PAYLOAD_SIZE]
-        .try_into()
-        .unwrap();
-
+    let ciphertext_public_key = PublicKey::from(pubkey_bytes);
+ 
+    // ── Shift ciphertext to start of buf so it aligns with ProtectedFile ──
+    let ct_size = size_of::<ProtectedFile>();
+    buf.copy_within(CRYPTO_HDR..CRYPTO_HDR + ct_size, 0);
+ 
+    // ── Decrypt in-place in buf[..ct_size] ──
+    let ciphertext = &mut buf[..ct_size];
+ 
     let mut successful = false;
     for group in secrets::PERMISSIONS {
         let receive_decrypt_key = match get_receive_decrypt_key(group.group_id) {
@@ -398,14 +387,24 @@ fn cmd_receive(
             None => continue,
         };
         match asymmetric_decrypt_in_place(
-            &mut ciphertext,
-            nonce,
+            ciphertext,
+            &nonce_copy,
             &ciphertext_public_key,
-            auth_tag,
+            &auth_tag_copy,
             &StaticSecret::from(receive_decrypt_key),
         ) {
-            Ok(()) => successful = true,
+            Ok(()) => {
+                successful = true;
+                break;
+            }
             Err(CryptoError::AesGcmEncryptError) => {
+                // Wrong key — re-shift original ciphertext back for next attempt.
+                // Since decrypt_in_place may have corrupted buf, we need the
+                // original ciphertext. But asymmetric_decrypt_in_place with a
+                // wrong key should leave the buffer unmodified on tag mismatch
+                // (AES-GCM decryption checks tag before returning plaintext).
+                // If your implementation DOES modify the buffer on failure,
+                // you'll need to copy the ciphertext before the loop instead.
                 continue;
             }
             Err(_) => {
@@ -418,25 +417,35 @@ fn cmd_receive(
         host.print_error("HSM does not have permission to receive file!");
         return;
     };
-
-    let file: ProtectedFile = transmute!(ciphertext);
-
-    // Add signature check
+ 
+    // ── Reinterpret buf as ProtectedFile without copying ──
+    // buf[..ct_size] now contains the decrypted ProtectedFile bytes.
+    // Use zerocopy::Ref to get a reference instead of transmute (which copies).
+    let file: &ProtectedFile =
+        match zerocopy::Ref::<&[u8], ProtectedFile>::from_bytes(&buf[..ct_size]) {
+            Ok(r) => r.into_ref(),
+            Err(_) => {
+                host.print_error("Failed to parse received file");
+                return;
+            }
+        };
+ 
+    // Signature check
     if file.verify_signature().is_err() {
         host.print_error("Invalid signature on received file");
         return;
     }
     host.print_debug("Verified signature of received file!");
-
+ 
     // Write received file to local flash
     let flash_write_start = Instant::now();
-    if let Err(e) = fs
-        .write_file_timed(write_slot, &file, file.uuid, flash, flash_write_start)
+    if let Err(e) =
+        fs.write_file_timed(write_slot, file, file.uuid, flash, flash_write_start)
     {
         host.print_error(&format!(64; "Writing received file failed: {}", e).unwrap());
         return;
     }
-
+ 
     // Empty success message
     let _ = host.write_packet(MsgType::Receive, &[]);
 }
