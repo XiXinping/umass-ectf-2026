@@ -340,7 +340,7 @@ fn cmd_receive(
     let _ = uart1.write_packet(MsgType::Receive, &request_buf);
 
     // Read response: nonce(12) + auth_tag(16) + pubkey(32) + encrypted ProtectedFile
-    let (cmd, recv_len) = match uart1.read_packet(buf, 0xFFFF) {
+    let (cmd, recv_len) = match uart1.read_packet(buf, buf.len() as u16) {
         Ok(v) => v,
         Err(_) => {
             host.print_error("Receive: read from neighbor failed");
@@ -546,6 +546,7 @@ fn cmd_listen(
 
     match cmd {
         MsgType::Interrogate => {
+            host.print_debug("Received interrogate commannd!");
             // Build file list response in buf:
             //   n_files(4 bytes u32 LE) + per-file entries (35 bytes each)
             // Entry: slot(1) + group_id(2) + name(32)
@@ -596,8 +597,10 @@ fn cmd_listen(
 
             let total_len = HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
             let _ = uart1.write_packet(MsgType::Interrogate, &buf[resp_off..resp_off + total_len]);
+            host.print_debug("Responded to interrogate!");
         }
         MsgType::Receive => {
+            host.print_debug("Received receive command!");
             let slot = uart_buf[0];
 
             // Read file into a stack-allocated ProtectedFile (ONE copy only)
