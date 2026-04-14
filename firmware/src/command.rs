@@ -316,10 +316,10 @@ fn cmd_receive(
     }
     const READ_SLOT_OFF: usize = 6;
     const WRITE_SLOT_OFF: usize = 7;
- 
+
     let read_slot = buf[READ_SLOT_OFF];
     let write_slot = buf[WRITE_SLOT_OFF];
- 
+
     host.print_debug("Checking PIN\n");
     let pin = &buf[0..PIN_LENGTH];
     match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
@@ -333,12 +333,12 @@ fn cmd_receive(
         }
         SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
     };
- 
+
     // Send receive request to neighbor (just the slot)
     let mut request_buf = [0u8; 1];
     request_buf[0] = read_slot;
     let _ = uart1.write_packet(MsgType::Receive, &request_buf);
- 
+
     // Read response: nonce(12) + auth_tag(16) + pubkey(32) + encrypted ProtectedFile
     let (cmd, recv_len) = match uart1.read_packet(buf, 0xFFFF) {
         Ok(v) => v,
@@ -347,39 +347,39 @@ fn cmd_receive(
             return;
         }
     };
- 
+
     if cmd != MsgType::Receive {
         host.print_error("Receive: opcode mismatch");
         return;
     }
- 
+
     if recv_len < TRANSFER_PAYLOAD_SIZE as u16 {
         host.print_error("Received file is incorrect size");
         return;
     }
- 
+
     // ── Copy the 60-byte crypto header out of buf before we modify it ──
     const CRYPTO_HDR: usize = NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE; // 60
- 
+
     let mut nonce_copy = [0u8; NONCE_SIZE];
     nonce_copy.copy_from_slice(&buf[..NONCE_SIZE]);
- 
+
     let mut auth_tag_copy = [0u8; AUTH_TAG_SIZE];
     auth_tag_copy.copy_from_slice(&buf[NONCE_SIZE..NONCE_SIZE + AUTH_TAG_SIZE]);
- 
+
     let mut pubkey_bytes = [0u8; PUBLIC_KEY_SIZE];
     pubkey_bytes.copy_from_slice(
         &buf[NONCE_SIZE + AUTH_TAG_SIZE..NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE],
     );
     let ciphertext_public_key = PublicKey::from(pubkey_bytes);
- 
+
     // ── Shift ciphertext to start of buf so it aligns with ProtectedFile ──
     let ct_size = size_of::<ProtectedFile>();
     buf.copy_within(CRYPTO_HDR..CRYPTO_HDR + ct_size, 0);
- 
+
     // ── Decrypt in-place in buf[..ct_size] ──
     let ciphertext = &mut buf[..ct_size];
- 
+
     let mut successful = false;
     for group in secrets::PERMISSIONS {
         let receive_decrypt_key = match get_receive_decrypt_key(group.group_id) {
@@ -417,35 +417,33 @@ fn cmd_receive(
         host.print_error("HSM does not have permission to receive file!");
         return;
     };
- 
+
     // ── Reinterpret buf as ProtectedFile without copying ──
     // buf[..ct_size] now contains the decrypted ProtectedFile bytes.
     // Use zerocopy::Ref to get a reference instead of transmute (which copies).
     let file: &ProtectedFile =
         match zerocopy::Ref::<&[u8], ProtectedFile>::from_bytes(&buf[..ct_size]) {
-            Ok(r) => r.into_ref(),
+            Ok(r) => zerocopy::Ref::<&[u8], ProtectedFile>::into_ref(r),
             Err(_) => {
                 host.print_error("Failed to parse received file");
                 return;
             }
         };
- 
+
     // Signature check
     if file.verify_signature().is_err() {
         host.print_error("Invalid signature on received file");
         return;
     }
     host.print_debug("Verified signature of received file!");
- 
+
     // Write received file to local flash
     let flash_write_start = Instant::now();
-    if let Err(e) =
-        fs.write_file_timed(write_slot, file, file.uuid, flash, flash_write_start)
-    {
+    if let Err(e) = fs.write_file_timed(write_slot, file, file.uuid, flash, flash_write_start) {
         host.print_error(&format!(64; "Writing received file failed: {}", e).unwrap());
         return;
     }
- 
+
     // Empty success message
     let _ = host.write_packet(MsgType::Receive, &[]);
 }
@@ -465,10 +463,10 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
         }
         SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
     };
- 
+
     // Send empty interrogate request to neighbor
     let _ = uart1.write_packet(MsgType::Interrogate, &[]);
- 
+
     // Read list response from neighbor (standard binary format)
     let (cmd, recv_len) = match uart1.read_packet(buf, buf.len() as u16) {
         Ok(v) => v,
@@ -479,24 +477,24 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
             return;
         }
     };
- 
+
     if cmd != MsgType::Interrogate {
         host.print_error("Interrogate: opcode mismatch");
         return;
     }
- 
+
     // ── Parse binary response: nfiles(4) + entries(35 each) ──
     const ENTRY_SIZE: usize = 1 + 2 + MAX_NAME_SIZE; // 35
     const HEADER_SIZE: usize = 4;
- 
+
     let recv_len = recv_len as usize;
     if recv_len < HEADER_SIZE {
         host.print_error("Interrogate: response too short");
         return;
     }
- 
+
     let total_files = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
- 
+
     // ── Filter to files this HSM has receive permission for ──
     // Compact in-place: copy qualifying entries forward
     let mut num_receivable: u32 = 0;
@@ -505,7 +503,7 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
         if src_off + ENTRY_SIZE > recv_len {
             break;
         }
- 
+
         let group_id = u16::from_le_bytes([buf[src_off + 1], buf[src_off + 2]]);
         if has_permission(group_id, PermissionType::Receive) {
             let dst_off = HEADER_SIZE + (num_receivable as usize) * ENTRY_SIZE;
@@ -518,10 +516,10 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
             num_receivable += 1;
         }
     }
- 
+
     // Overwrite nfiles header with filtered count
     buf[..4].copy_from_slice(&num_receivable.to_le_bytes());
- 
+
     let total_len = HEADER_SIZE + (num_receivable as usize) * ENTRY_SIZE;
     let _ = host.write_packet(MsgType::Interrogate, &buf[..total_len]);
 }
@@ -545,7 +543,7 @@ fn cmd_listen(
             return;
         }
     };
- 
+
     match cmd {
         MsgType::Interrogate => {
             // Build file list response in buf:
@@ -553,13 +551,13 @@ fn cmd_listen(
             // Entry: slot(1) + group_id(2) + name(32)
             const ENTRY_SIZE: usize = 1 + 2 + MAX_NAME_SIZE; // 35
             const HEADER_SIZE: usize = 4; // n_files u32
- 
+
             // On-flash ProtectedFile starts with: in_use(4) + group_id(2) + name(32) = 38
             const FILE_HDR_SIZE: usize = 4 + 2 + MAX_NAME_SIZE; // 38
- 
+
             let mut nfiles: u32 = 0;
             let resp_off = FILE_HDR_SIZE; // response starts after scratch area
- 
+
             for slot in 0..(MAX_FILE_COUNT as u8) {
                 let entry = match fs.get_file_metadata(slot) {
                     Ok(e) => e,
@@ -568,40 +566,40 @@ fn cmd_listen(
                 if entry.is_empty() {
                     continue;
                 }
- 
+
                 // Read only the first 38 bytes (file header) from flash
                 flash.read(entry.flash_addr, &mut buf[..FILE_HDR_SIZE]);
- 
+
                 let in_use = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
                 if in_use != FILE_IN_USE {
                     continue;
                 }
- 
+
                 // Extract group_id and name from scratch area
                 let group_lo = buf[4];
                 let group_hi = buf[5];
                 let mut name = [0u8; MAX_NAME_SIZE];
                 name.copy_from_slice(&buf[6..6 + MAX_NAME_SIZE]);
- 
+
                 // Append entry to response area (after scratch)
                 let entry_off = resp_off + HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
                 buf[entry_off] = slot;
                 buf[entry_off + 1] = group_lo;
                 buf[entry_off + 2] = group_hi;
                 buf[entry_off + 3..entry_off + 3 + MAX_NAME_SIZE].copy_from_slice(&name);
- 
+
                 nfiles += 1;
             }
- 
+
             // Write nfiles header
             buf[resp_off..resp_off + 4].copy_from_slice(&nfiles.to_le_bytes());
- 
+
             let total_len = HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
             let _ = uart1.write_packet(MsgType::Interrogate, &buf[resp_off..resp_off + total_len]);
         }
         MsgType::Receive => {
             let slot = uart_buf[0];
- 
+
             // Read file into a stack-allocated ProtectedFile (ONE copy only)
             let mut file = ProtectedFile::default();
             match fs.read_file_in(&mut file, slot, flash) {
@@ -623,7 +621,7 @@ fn cmd_listen(
                     return;
                 }
             };
- 
+
             let receive_encrypt_key = match get_receive_encrypt_key(file.group_id) {
                 Some(key) => key,
                 None => {
@@ -631,7 +629,7 @@ fn cmd_listen(
                     return;
                 }
             };
- 
+
             // Encrypt in-place via transmute_mut! to avoid extra copies and allocations
             let file_buf: &mut [u8; size_of::<ProtectedFile>()] = transmute_mut!(&mut file);
             let (nonce, auth_tag, cipher_public_key) = match asymmetric_encrypt_in_place::<
@@ -645,7 +643,7 @@ fn cmd_listen(
                     return;
                 }
             };
- 
+
             uart1.write_packet_chunks(
                 MsgType::Receive,
                 &[&nonce, &auth_tag, &cipher_public_key.to_bytes(), file_buf],
@@ -656,7 +654,7 @@ fn cmd_listen(
             return;
         }
     }
- 
+
     // Success — blank message to host
     let _ = host.write_packet(MsgType::Listen, &[]);
 }
