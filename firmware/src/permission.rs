@@ -6,7 +6,7 @@
 
 use crate::secrets;
 use curve25519_dalek::scalar::Scalar;
-use ed25519_dalek::{VerifyingKey, hazmat::ExpandedSecretKey};
+use ed25519_dalek::{SigningKey, VerifyingKey, hazmat::ExpandedSecretKey};
 
 /// Pre-computed AES key created by performing Diffie-Hellman key exchange using the public key
 /// of the group and the HSM's local secret. Used for asymmetric decryption.
