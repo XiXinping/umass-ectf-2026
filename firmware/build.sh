@@ -1,18 +1,17 @@
 #!/bin/bash
 set -e
 
-# Default output directory to /out (mapped volume) if not provided
+# Output directory = /out
 BUILDDIR=${1:-/tmp/build}
 TARGET=${TARGET:-thumbv6m-none-eabi}
 BIN_NAME=${BIN_NAME:-ectf-2026}
 export SECRETS_FILE="/secrets/global.secrets"
 mkdir -p "$BUILDDIR"
 
-# Compile the firmware
-# Build one explicit binary to avoid building extra bin targets.
+# Compile firmware
 cargo build --release --target "$TARGET" --bin "$BIN_NAME"
 
-# 3. Copy the output artifact
+# Copy the output to the build directory
 ELF_PATH="target/$TARGET/release/$BIN_NAME"
 
 if [ -f "$ELF_PATH" ]; then
@@ -25,6 +24,6 @@ if [ -f "$ELF_PATH" ]; then
     echo "Copied hsm.elf and hsm.bin to /out"
 
 else
-    echo "Error: Build artifact not found at $ELF_PATH"
+    echo "Error: Build output not found at $ELF_PATH"
     exit 1
 fi

@@ -1,5 +1,4 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
-# replace MSPM0L2228 with your chip as listed in `probe-rs chip list`
 runner = "probe-rs run --restore-unwritten --verify --chip MSPM0L2228 --protocol=swd"
 rustflags = [
 	"-C",
@@ -21,5 +20,4 @@ target = "thumbv6m-none-eabi"
 DEFMT_LOG = "trace"
 SECRETS_FILE = "global.secrets"
 HSM_PIN = "abcdef"
-# PERMISSIONS = "1234=RW-:4321=-WC:dead=R--:beef=RWC"
 PERMISSIONS = "beef=RWC:0002=R--:0003=RW-:0004=--C:0005=R-C:0006=RWC:0007=-W-:0008=R--:0009=RWC:000a=RW-:000b=R-C:000c=-WC:000d=RWC:000e=R--:000f=-W-:0010=RWC"
