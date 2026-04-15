@@ -22,7 +22,7 @@ use heapless::format;
 pub const TRANSFER_PAYLOAD_SIZE: usize =
     size_of::<ProtectedFile>() + NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE + 2;
 
-/// Dispatch a received command to the appropriate handler.
+/// Determine what command was received and process accordingly.
 #[inline(never)]
 pub fn handle_command(
     host: &mut HostUart,
@@ -46,8 +46,7 @@ pub fn handle_command(
     }
 }
 
-// ─── Command handler stubs ──────────────────────────────────────────
-
+/// Lists all files stored on the HSM.
 #[inline(never)]
 fn cmd_list(
     host: &mut HostUart,

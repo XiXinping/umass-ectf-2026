@@ -3,19 +3,14 @@
 
 use defmt::*;
 use ectf_2026::GLOBAL_RNG;
-use ectf_2026::authentication::verify_pin;
 use ectf_2026::command;
 use ectf_2026::command::TRANSFER_PAYLOAD_SIZE;
 use ectf_2026::flash::HwFlash;
 use ectf_2026::host::HostUart;
 use ectf_2026::random::SecureRng;
-use ectf_2026::secrets;
-use ectf_2026::secrets::PIN_HASH;
-use ectf_2026::secrets::PIN_SALT;
 use ectf_2026::secure_filesystem::Filesystem;
 use embassy_mspm0::uart::{Config, Uart};
 
-// use defmt_rtt as _;
 use {defmt_rtt as _, panic_probe as _};
 
 /// Custom NMI handler — clears SRAM ECC DED NMI and returns.
@@ -32,7 +27,7 @@ unsafe fn set_vtor(addr: u32) {
     unsafe { core::ptr::write_volatile(VTOR, addr) };
 }
 
-/// Maximum message buffer size (matches sizeof(write_command_t) in C)
+/// Maximum message buffer size
 const MAX_MSG_SIZE: usize = TRANSFER_PAYLOAD_SIZE;
 
 #[cortex_m_rt::entry]
@@ -50,23 +45,22 @@ fn main() -> ! {
     let mut config = Config::default();
     config.baudrate = 115200;
 
-    // UART0 — host/control interface
+    // UART0 is the host interface.
     let uart0 = unwrap!(Uart::new_blocking(p.UART0, p.PA11, p.PA10, config));
     let mut host = HostUart::new(uart0);
     host.print_debug("Hello Embassy World!");
 
-    // UART1 — transfer interface (neighbor HSM): PA8 TX, PA9 RX
+    // UART1 is the transfer interface.
     let uart1 = unwrap!(Uart::new_blocking(p.UART1, p.PA9, p.PA8, config));
     let mut transfer = HostUart::new(uart1);
 
     let mut hw_flash = HwFlash;
     let mut fs = Filesystem::init(&hw_flash);
 
-    let pin_attempt = "abcdef";
-    verify_pin(pin_attempt.as_bytes(), &PIN_SALT, &PIN_HASH);
-
+    // Initialize the RNG at startup to avoid expensive calls to the TRNG.
     let rng = SecureRng::new().expect("RNG init failed");
 
+    // Make the RNG globally accessible.
     critical_section::with(|cs: critical_section::CriticalSection<'_>| {
         *GLOBAL_RNG.borrow(cs).borrow_mut() = Some(rng);
     });
@@ -75,8 +69,6 @@ fn main() -> ! {
     loop {
         match host.read_packet(&mut buf, MAX_MSG_SIZE as u16) {
             Ok((msg_type, len)) => {
-                // host.print_debug("Got cmd:");
-                // host.print_hex_debug(&[msg_type as u8]);
                 command::handle_command(
                     &mut host,
                     &mut transfer,
@@ -88,7 +80,7 @@ fn main() -> ! {
                 );
             }
             Err(_) => {
-                host.print_error("read failed");
+                host.print_error("Read failed!");
             }
         }
     }

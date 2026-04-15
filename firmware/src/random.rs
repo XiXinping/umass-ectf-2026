@@ -18,36 +18,13 @@ pub enum RngError {
     InitFailed,
     /// Block generation failed.
     GenerateFailed,
-    /// Freeing the RNG context failed.
-    FreeFailed,
 }
 
-// ---------------------------------------------------------------------------
-// TRNG seed generation
-// ---------------------------------------------------------------------------
-
-/// Fill `output` with raw bytes read directly from the hardware TRNG.
-///
-/// Issues repeated NORM_FUNC commands, polls for capture-ready,
-/// then extracts individual bytes from each 32-bit capture word.
-///
-/// # Register mapping (MSPM0 TRNG peripheral)
-///
-/// | C DriverLib call              | Register / field               |
-/// |-------------------------------|--------------------------------|
-/// | `DL_TRNG_sendCommand(…)`      | `CMD.CMD = NORM_FUNC (0x01)`   |
-/// | `DL_TRNG_isCaptureReady(…)`   | `STAT.CAPTURE_RDY`             |
-/// | `DL_TRNG_getCapture(…)`       | `DATA_CAPTURE[0]`              |
-/// | `DL_TRNG_disablePower(…)`     | `PWREN.ENABLE = 0`             |
-///
-/// **NOTE:** The exact accessor names below follow the chiptool/metapac
-/// convention used by `embassy-mspm0`.  If PAC version differs,
-/// do something else
+/// Generate N random bytes using the hardware True Random Number Generator (TRNG).
 pub fn trng_gen_seed<const N: usize>() -> Result<[u8; N], RngError> {
     let mut output = [0; N];
-    // Grab the PAC singleton for the TRNG peripheral.
-    // embassy-mspm0 exposes this as a zero-sized token pointing at the
-    // memory-mapped register block.
+    // Grab the PAC singleton for the TRNG peripheral. embassy-mspm0 exposes this as a zero-sized
+    // token pointing at the memory-mapped register block.
     let mut trng =
         Trng::new(unsafe { peripherals::TRNG::steal() }).map_err(|_| RngError::SeedFailed)?;
 
@@ -64,19 +41,6 @@ pub fn trng_gen_seed<const N: usize>() -> Result<[u8; N], RngError> {
 pub struct SecureRng {
     cipher: ChaCha20,
 }
-
-// impl Deref for SecureRng {
-//     type Target = ChaCha20;
-//     fn deref(&self) -> &Self::Target {
-//         &self.cipher
-//     }
-// }
-//
-// impl DerefMut for SecureRng {
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         &mut self.cipher
-//     }
-// }
 
 impl SecureRng {
     // ChaCha20 takes a 256-bit key (32 bytes) and a 96-bit nonce (12 bytes).
@@ -106,20 +70,9 @@ impl SecureRng {
             .map_err(|_| RngError::GenerateFailed)?;
         Ok(output)
     }
-
-    /// Explicitly destroy the CSPRNG state.
-    ///
-    /// In Rust the struct is also cleaned up when it goes out of scope, but
-    /// this method lets callers opt-in to immediate zeroisation.
-    pub fn free(mut self) -> Result<(), RngError> {
-        // Overwrite internal state by re-keying with zeros, then drop.
-        let zero_key = [0u8; Self::KEY_LEN];
-        let zero_nonce = [0u8; Self::NONCE_LEN];
-        self.cipher = ChaCha20::new((&zero_key).into(), (&zero_nonce).into());
-        Ok(())
-    }
 }
 
+// Implement traits from the rng crate for interoperability.
 impl RngCore for SecureRng {
     fn next_u32(&mut self) -> u32 {
         let mut bytes: [u8; 4] = [0; 4];

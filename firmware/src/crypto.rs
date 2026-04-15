@@ -98,10 +98,7 @@ pub struct SharedSecrets {
     pub shared_secret: [u8; 16],
 }
 
-// ─── Byte ↔ word conversion for AESADV registers ──────────────────
-
-/// Pack up to 4 bytes into a little-endian u32, zero-filling any
-/// missing trailing bytes.
+/// Pack up to 4 bytes into a little-endian u32, zero-filling any missing trailing bytes.
 #[inline(always)]
 fn le_word_from_slice(src: &[u8]) -> u32 {
     let mut tmp = [0u8; 4];
@@ -110,8 +107,7 @@ fn le_word_from_slice(src: &[u8]) -> u32 {
     u32::from_le_bytes(tmp)
 }
 
-/// Pack a byte slice (≤16 bytes) into four little-endian u32 words,
-/// zero-padding any trailing space.
+/// Pack a byte slice (≤16 bytes) into 4 little-endian u32 words, zero-padding any trailing space.
 #[inline(always)]
 fn pack_block(src: &[u8]) -> [u32; 4] {
     let mut words = [0u32; 4];
@@ -330,8 +326,8 @@ fn read_tag_into(eng: &GcmEngine, out: &mut [u8; AUTH_TAG_SIZE]) -> Result<(), C
     Ok(())
 }
 
-// ─── Public AES-GCM API (hardware-backed) ─────────────────────────
-
+/// Encrypt plaintext in-place using AES-GCM. Optional associated data can provided to ensure its
+/// integrity. Returns the authentication tag on success.
 pub fn aes_gcm_encrypt_in_place(
     plaintext: &mut [u8],
     key: &[u8; 16],
@@ -376,6 +372,9 @@ pub fn aes_gcm_encrypt_in_place(
     Ok(auth_tag)
 }
 
+/// Decrypt ciphertext in-place using AES-GCM. Verifies that the provided authentication tag
+/// is valid and ensures the integrity of the provided associated data. Returns `Ok(())` on
+/// successful decryption.
 pub fn aes_gcm_decrypt_in_place(
     ciphertext: &mut [u8],
     key: &[u8; 16],
@@ -414,12 +413,9 @@ pub fn aes_gcm_decrypt_in_place(
     Ok(())
 }
 
-// ─── Hybrid (asymmetric) encryption ───────────────────────────────
-//
-// X25519 ECDH key agreement → HKDF-SHA256 key derivation → AES-128-GCM.
-// An ephemeral keypair is generated per encryption so that only the
-// holder of the static private key can recover the shared secret.
-
+/// Encrypts plaintext in-place using an encryption key derived from a Diffie-Hellman Key Exchange
+/// that occurs at compile time. Returns the nonce, authentication tag, and public key from which
+/// the symmetric key can be derived.
 pub fn asymmetric_encrypt_in_place<const N: usize>(
     plaintext: &mut [u8],
     encrypt_key: &EncryptKey,
@@ -439,10 +435,9 @@ pub fn asymmetric_encrypt_in_place<const N: usize>(
     Ok((nonce, auth_tag, secrets::HSM_PUBLIC_KEY.into()))
 }
 
-/// Decrypts ciphertext produced by hybrid encryption. Recovers the
-/// shared AES key via ECDH with the static private key and the
-/// per-message ephemeral public key, then verifies + decrypts via
-/// hardware AES-128-GCM.
+/// Decrypts ciphertext produced by hybrid encryption. Recovers the shared AES key via ECDH with the
+/// static private key and the per-message ephemeral public key, then verifies and decrypts using
+/// AES-GCM.
 pub fn asymmetric_decrypt_in_place(
     ciphertext: &mut [u8],
     nonce: &[u8; 12],
@@ -462,8 +457,6 @@ pub fn asymmetric_decrypt_in_place(
 
     Ok(())
 }
-
-// ─── Ed25519 signing / verification ───────────────────────────────
 
 /// Sign a file digest using Ed25519.
 ///
@@ -505,4 +498,3 @@ pub fn ecc_verify_file_digest(
         .verify(digest, signature)
         .map_err(|_| AuthError::VerificationFailed)
 }
-
