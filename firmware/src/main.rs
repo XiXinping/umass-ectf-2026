@@ -13,29 +13,33 @@ use embassy_mspm0::uart::{Config, Uart};
 
 use {defmt_rtt as _, panic_probe as _};
 
-/// Custom NMI handler — clears SRAM ECC DED NMI and returns.
-/// MSPM0L2228 fires SRAMDED NMI on reads of uninitialized SRAM.
+/// Clear the SRAM ECC double-error-detect NMI.
+///
+/// The MSPM0L2228 fires an SRAMDED NMI on reads of uninitialised SRAM.
+/// Acknowledging the interrupt and returning lets startup continue normally.
 #[cortex_m_rt::exception]
 unsafe fn NonMaskableInt() {
     const SYSCTL_NMIICLR: *mut u32 = 0x400B_0078 as *mut u32;
     unsafe { core::ptr::write_volatile(SYSCTL_NMIICLR, 0x7F) };
 }
 
-/// Set VTOR to the application vector table address.
+/// Point the vector table at the application region.
 unsafe fn set_vtor(addr: u32) {
     const VTOR: *mut u32 = 0xE000_ED08 as *mut u32;
     unsafe { core::ptr::write_volatile(VTOR, addr) };
 }
 
-/// Maximum message buffer size
+/// Maximum message buffer size (must accommodate the largest transfer payload).
 const MAX_MSG_SIZE: usize = TRANSFER_PAYLOAD_SIZE;
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
+    // Application vector table starts at 0x6000 (after bootloader region).
     unsafe { set_vtor(0x0000_6000) };
 
     let p = embassy_mspm0::init(Default::default());
-    // Power on and reset the AESADV hardware accelerator
+
+    // Power on and reset the AESADV hardware accelerator.
     let aes_gcm_engine = ectf_2026::aes_hardware_accel::GcmEngine::new();
     aes_gcm_engine.enable_power();
     aes_gcm_engine.write_rstctl(0x03);
@@ -45,12 +49,11 @@ fn main() -> ! {
     let mut config = Config::default();
     config.baudrate = 115200;
 
-    // UART0 is the host interface.
+    // UART0: host computer interface.
     let uart0 = unwrap!(Uart::new_blocking(p.UART0, p.PA11, p.PA10, config));
     let mut host = HostUart::new(uart0);
-    host.print_debug("Hello Embassy World!");
 
-    // UART1 is the transfer interface.
+    // UART1: HSM-to-HSM transfer interface.
     let uart1 = unwrap!(Uart::new_blocking(p.UART1, p.PA9, p.PA8, config));
     let mut transfer = HostUart::new(uart1);
 
@@ -59,12 +62,12 @@ fn main() -> ! {
 
     // Initialize the RNG at startup to avoid expensive calls to the TRNG.
     let rng = SecureRng::new().expect("RNG init failed");
-
     // Make the RNG globally accessible.
     critical_section::with(|cs: critical_section::CriticalSection<'_>| {
         *GLOBAL_RNG.borrow(cs).borrow_mut() = Some(rng);
     });
 
+    // Main command loop: read a packet from the host and dispatch it.
     let mut buf = [0u8; MAX_MSG_SIZE];
     loop {
         match host.read_packet(&mut buf, MAX_MSG_SIZE as u16) {

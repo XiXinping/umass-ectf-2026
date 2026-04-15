@@ -1,6 +1,12 @@
+//! Group permissions and key lookup.
+//!
+//! Each file group has an associated set of cryptographic keys and permission
+//! flags that control read, write, and receive access. The backing data lives
+//! in the build-time `secrets` module; this module provides typed accessors.
+
 use crate::secrets;
 use curve25519_dalek::scalar::Scalar;
-use ed25519_dalek::{SigningKey, VerifyingKey, hazmat::ExpandedSecretKey};
+use ed25519_dalek::{VerifyingKey, hazmat::ExpandedSecretKey};
 
 /// Pre-computed AES key created by performing Diffie-Hellman key exchange using the public key
 /// of the group and the HSM's local secret. Used for asymmetric decryption.
@@ -33,12 +39,14 @@ pub struct SignatureKeyPair {
     pub verifying_key: VerifyingKey,
 }
 
+/// Symmetric encrypt/decrypt key pair for a single permission type (read or receive).
 #[derive(Clone)]
 pub struct EncryptionKeyPair {
     pub encrypt_key: EncryptKey,
     pub decrypt_key: DecryptKey,
 }
 
+/// Complete set of cryptographic keys for one file group.
 #[derive(Clone)]
 pub struct KeyPairSet {
     pub read_keys: EncryptionKeyPair,
@@ -46,6 +54,7 @@ pub struct KeyPairSet {
     pub receive_keys: EncryptionKeyPair,
 }
 
+/// The three kinds of access that can be granted for a file group.
 #[derive(Clone, Copy)]
 pub enum PermissionType {
     Read,
@@ -53,6 +62,7 @@ pub enum PermissionType {
     Receive,
 }
 
+/// Per-group permission flags indicating which operations this HSM may perform.
 #[derive(Clone)]
 pub struct GroupPermission {
     pub group_id: u16,
@@ -61,44 +71,30 @@ pub struct GroupPermission {
     pub receive_perm: bool,
 }
 
+/// Group-scoped encryption key pair for read operations.
 #[derive(Clone)]
 pub struct ReadKeyPair {
     pub group_id: u16,
     pub key_pair: EncryptionKeyPair,
 }
 
+/// Group-scoped encryption key pair for receive operations.
 #[derive(Clone)]
 pub struct ReceiveKeyPair {
     pub group_id: u16,
     pub key_pair: EncryptionKeyPair,
 }
 
+/// Group-scoped signature key pair for write operations.
 #[derive(Clone)]
 pub struct WriteKeyPair {
     pub group_id: u16,
     pub key_pair: SignatureKeyPair,
 }
 
-// pub fn get_signing_key(group_id: u16) -> Option<SigningKey> {
-//     // for perm in secrets::write_permissions() {
-//     //     let signing_key_print = match perm.key_pair.signing_key.clone() {
-//     //         Some(signing_key) => signing_key.to_bytes(),
-//     //         None => [0; 32],
-//     //     };
-//     //     println!(
-//     //         "{}: {:?} and {:?}",
-//     //         perm.group_id,
-//     //         signing_key_print,
-//     //         perm.key_pair.verifying_key.to_bytes()
-//     //     );
-//     // }
-//     secrets::write_permissions()
-//         .iter()
-//         .find(|g| g.group_id == group_id)
-//         .and_then(|g| g.key_pair.signing_key.clone())
-// }
+// ─── Key lookup functions ──────────────────────────────────────────
 
-/// Retrieve the expanded secret key used for creating signatures.
+/// Retrieve the expanded Ed25519 secret key for signing files in `group_id`.
 pub fn get_expanded_secret_key(group_id: u16) -> Option<ExpandedSecretKey> {
     let raw = secrets::RAW_WRITE_KEYS
         .iter()
@@ -113,6 +109,7 @@ pub fn get_expanded_secret_key(group_id: u16) -> Option<ExpandedSecretKey> {
     })
 }
 
+/// Retrieve the Ed25519 verifying key for `group_id`.
 pub fn get_verifying_key(group_id: u16) -> Option<VerifyingKey> {
     let raw = secrets::RAW_WRITE_KEYS
         .iter()
@@ -120,6 +117,7 @@ pub fn get_verifying_key(group_id: u16) -> Option<VerifyingKey> {
     Some(VerifyingKey::from_bytes(&raw.verifying_key_bytes).ok()?)
 }
 
+/// Retrieve the symmetric encryption key for reading files in `group_id`.
 pub fn get_read_encrypt_key(group_id: u16) -> Option<EncryptKey> {
     secrets::READ_KEYS
         .iter()
@@ -127,6 +125,7 @@ pub fn get_read_encrypt_key(group_id: u16) -> Option<EncryptKey> {
         .map(|g| g.key_pair.encrypt_key)
 }
 
+/// Retrieve the ECDH private key for decrypting files in `group_id`.
 pub fn get_read_decrypt_key(group_id: u16) -> Option<DecryptKey> {
     secrets::READ_KEYS
         .iter()
@@ -134,6 +133,7 @@ pub fn get_read_decrypt_key(group_id: u16) -> Option<DecryptKey> {
         .map(|g| g.key_pair.decrypt_key)
 }
 
+/// Retrieve the symmetric encryption key for receiving files in `group_id`.
 pub fn get_receive_encrypt_key(group_id: u16) -> Option<EncryptKey> {
     secrets::RECEIVE_KEYS
         .iter()
@@ -141,6 +141,7 @@ pub fn get_receive_encrypt_key(group_id: u16) -> Option<EncryptKey> {
         .map(|g| g.key_pair.encrypt_key)
 }
 
+/// Retrieve the ECDH private key for decrypting received files in `group_id`.
 pub fn get_receive_decrypt_key(group_id: u16) -> Option<DecryptKey> {
     secrets::RECEIVE_KEYS
         .iter()
@@ -148,6 +149,7 @@ pub fn get_receive_decrypt_key(group_id: u16) -> Option<DecryptKey> {
         .map(|g| g.key_pair.decrypt_key)
 }
 
+/// Check whether this HSM holds a specific permission for `group_id`.
 pub fn has_permission(group_id: u16, permission_type: PermissionType) -> bool {
     secrets::PERMISSIONS
         .iter()

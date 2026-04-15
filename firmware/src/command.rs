@@ -1,4 +1,8 @@
 //! Command dispatch and handlers for the eCTF host protocol.
+//!
+//! Each handler will validate the packet, authenticate
+//! the PIN (for protected commands), perform the operation, and send a typed
+//! response back to the host. On failure an Error message is sent instead.
 
 use x25519_dalek::{PublicKey, StaticSecret};
 use zerocopy::transmute_mut;
@@ -19,10 +23,32 @@ use crate::secure_filesystem::{
 };
 use heapless::format;
 
+/// Maximum transfer payload size: encrypted `ProtectedFile` plus crypto header.
 pub const TRANSFER_PAYLOAD_SIZE: usize =
     size_of::<ProtectedFile>() + NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE + 2;
 
-/// Determine what command was received and process accordingly.
+// ─── PIN verification helper ───────────────────────────────────────
+
+/// Verify the PIN from `buf` against the stored hash. Sends an error message
+/// to `host` and returns `false` on failure.
+fn verify_pin_or_error(host: &mut HostUart, buf: &[u8]) -> bool {
+    let pin = &buf[0..PIN_LENGTH];
+    match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
+        SecurityStatus::InvalidLength => {
+            host.print_error("Invalid pin length. Pin must be 6 digits.");
+            false
+        }
+        SecurityStatus::AuthFail => {
+            host.print_error("Nice try! Invalid pin!");
+            false
+        }
+        SecurityStatus::Success => true,
+    }
+}
+
+// ─── Command dispatch ──────────────────────────────────────────────
+
+/// Route an incoming host command to the appropriate handler.
 #[inline(never)]
 pub fn handle_command(
     host: &mut HostUart,
@@ -46,7 +72,11 @@ pub fn handle_command(
     }
 }
 
-/// Lists all files stored on the HSM.
+// ─── List ──────────────────────────────────────────────────────────
+
+/// List all files stored on this HSM (pin-protected).
+///
+/// Response: `nfiles(4B) + [slot(1) + group_id(2) + name(32)] * nfiles`
 #[inline(never)]
 fn cmd_list(
     host: &mut HostUart,
@@ -55,49 +85,35 @@ fn cmd_list(
     flash: &impl Flash,
     fs: &Filesystem,
 ) {
-    host.print_debug("Checking PIN\n");
     if pkt_len < PIN_LENGTH as u16 {
         host.print_error("Invalid pin length!");
         return;
     }
-    let pin = &buf[0..PIN_LENGTH];
-    match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
-        SecurityStatus::InvalidLength => {
-            host.print_error("Invalid pin length. Pin must be 6 digits.");
-            return;
-        }
-        SecurityStatus::AuthFail => {
-            host.print_error("Nice try! Invalid pin!");
-            return;
-        }
-        SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
-    };
+    if !verify_pin_or_error(host, buf) {
+        return;
+    }
 
-    // Response format expected by host tools:
-    //   nfiles (4 bytes u32 LE) + per-file entries (35 bytes each)
-    // Entry: slot(1) + group_id(2) + name(32)
-    const ENTRY_SIZE: usize = 1 + 2 + MAX_NAME_SIZE; // 35
+    const ENTRY_SIZE: usize = 1 + 2 + MAX_NAME_SIZE; // 35 bytes per file
     const HEADER_SIZE: usize = 4; // nfiles u32
 
-    // Read file header from flash: in_use(4) + group_id(2) + name(32)
-    const FILE_HDR_SIZE: usize = 4 + 2 + MAX_NAME_SIZE; // 38
+    // On-flash file header: in_use(4) + group_id(2) + name(32) = 38 bytes.
+    // The first 38 bytes of `buf` are used as scratch for flash reads;
+    // the response is assembled immediately after.
+    const FILE_HDR_SIZE: usize = 4 + 2 + MAX_NAME_SIZE;
+    let resp_off = FILE_HDR_SIZE;
 
     let mut nfiles: u32 = 0;
-    // Build the response body in buf starting after a 38-byte scratch area
-    // Layout: [scratch 38 bytes for flash reads][response: nfiles(4) + entries...]
-    let resp_off = FILE_HDR_SIZE; // start response after scratch area
 
     for slot in 0..(MAX_FILE_COUNT as u8) {
         let entry = match fs.get_file_metadata(slot) {
             Ok(e) => e,
             Err(_) => continue,
         };
-
         if entry.is_empty() {
             continue;
         }
 
-        // Read file header into scratch area buf[..38]
+        // Read file header into scratch area buf[..38].
         flash.read(entry.flash_addr, &mut buf[..FILE_HDR_SIZE]);
 
         let in_use = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
@@ -105,13 +121,12 @@ fn cmd_list(
             continue;
         }
 
-        // Save values from scratch area before writing into response area
+        // Capture values from scratch before overwriting the response region.
         let group_lo = buf[4];
         let group_hi = buf[5];
         let mut name = [0u8; MAX_NAME_SIZE];
         name.copy_from_slice(&buf[6..6 + MAX_NAME_SIZE]);
 
-        // Copy entry into response area
         let entry_off = resp_off + HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
         buf[entry_off] = slot;
         buf[entry_off + 1] = group_lo;
@@ -121,42 +136,31 @@ fn cmd_list(
         nfiles += 1;
     }
 
-    // Write nfiles header
     buf[resp_off..resp_off + 4].copy_from_slice(&nfiles.to_le_bytes());
 
     let total_len = HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
     let _ = host.write_packet(MsgType::List, &buf[resp_off..resp_off + total_len]);
 }
 
+// ─── Read ──────────────────────────────────────────────────────────
+
+/// Read a file from the HSM and return its plaintext (pin-protected).
+///
+/// Response: `name(32B) + plaintext(variable)`
 #[inline(never)]
 fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, fs: &Filesystem) {
-    const PIN_OFF: usize = 0;
     const SLOT_OFF: usize = 6;
-    const CMD_SIZE: usize = 7;
+    const CMD_SIZE: usize = 7; // pin(6) + slot(1)
 
     if (pkt_len as usize) < CMD_SIZE {
         host.print_error("Read packet too short");
         return;
     }
+    if !verify_pin_or_error(host, buf) {
+        return;
+    }
 
-    host.print_debug("Checking PIN\n");
-
-    let pin = &buf[0..PIN_LENGTH];
-    match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
-        SecurityStatus::InvalidLength => {
-            host.print_error("Invalid pin length. Pin must be 6 digits.");
-            return;
-        }
-        SecurityStatus::AuthFail => {
-            host.print_error("Nice try! Invalid pin!");
-            return;
-        }
-        SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
-    };
-
-    let _pin = &buf[PIN_OFF..PIN_OFF + 6];
     let slot = buf[SLOT_OFF];
-    host.print_debug("Read: Parsed slot and UUID\n");
 
     let mut file = ProtectedFile::default();
     match fs.read_file(&mut file, slot, flash) {
@@ -206,9 +210,16 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
     let plaintext = &file.ciphertext[..file.plaintext_len];
 
     let _ = host.write_packet_chunks(MsgType::Read, &[&file.name, plaintext]);
-    host.print_debug("Read: Sent file contents response\n");
 }
 
+// ─── Write ─────────────────────────────────────────────────────────
+
+/// Write a file to the HSM (pin-protected).
+///
+/// Command body layout:
+///   pin(6) + slot(1) + group_id(2) + name(32) + uuid(16) + contents_len(2) + contents(N)
+///
+/// Response: empty body on success.
 #[inline(never)]
 fn cmd_write(
     host: &mut HostUart,
@@ -217,17 +228,17 @@ fn cmd_write(
     flash: &mut impl Flash,
     fs: &mut Filesystem,
 ) {
-    // Start SysTick timer immediately to capture total command time
+    // SysTick timer — used for performance profiling during development.
     const SYST_RVR: *mut u32 = 0xE000_E014 as *mut u32;
     const SYST_CVR: *mut u32 = 0xE000_E018 as *mut u32;
     const SYST_CSR: *mut u32 = 0xE000_E010 as *mut u32;
     unsafe {
-        core::ptr::write_volatile(SYST_RVR, 0x00FF_FFFF); // max 24-bit
-        core::ptr::write_volatile(SYST_CVR, 0); // clear current
-        core::ptr::write_volatile(SYST_CSR, 0x05); // enable, processor clock, no interrupt
+        core::ptr::write_volatile(SYST_RVR, 0x00FF_FFFF); // max 24-bit reload
+        core::ptr::write_volatile(SYST_CVR, 0); // clear current value
+        core::ptr::write_volatile(SYST_CSR, 0x05); // enable, processor clock, no IRQ
     }
 
-    const PIN_OFF: usize = 0;
+    // Field offsets within the command body.
     const SLOT_OFF: usize = 6;
     const GROUP_OFF: usize = 7;
     const NAME_OFF: usize = 9;
@@ -239,28 +250,16 @@ fn cmd_write(
         host.print_error("Write packet too short");
         return;
     }
-    host.print_debug("Checking PIN\n");
-    let pin = &buf[0..PIN_LENGTH];
-    match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
-        SecurityStatus::InvalidLength => {
-            host.print_error("Invalid pin length. Pin must be 6 digits.");
-            return;
-        }
-        SecurityStatus::AuthFail => {
-            host.print_error("Nice try! Invalid pin!");
-            return;
-        }
-        SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
-    };
+    if !verify_pin_or_error(host, buf) {
+        return;
+    }
 
-    let _pin = &buf[PIN_OFF..PIN_OFF + 6];
     let slot = buf[SLOT_OFF];
     let group_id = u16::from_le_bytes([buf[GROUP_OFF], buf[GROUP_OFF + 1]]);
     let name: [u8; 32] = buf[NAME_OFF..NAME_OFF + MAX_NAME_SIZE].try_into().unwrap();
     let uuid: [u8; 16] = buf[UUID_OFF..UUID_OFF + UUID_SIZE].try_into().unwrap();
     let contents_len = u16::from_le_bytes([buf[CLEN_OFF], buf[CLEN_OFF + 1]]) as usize;
 
-    // Validate contents_len against actual packet payload
     if contents_len > MAX_CONTENTS_SIZE || CONTENTS_OFF + contents_len > pkt_len as usize {
         host.print_error("Invalid contents length");
         return;
@@ -287,17 +286,26 @@ fn cmd_write(
         }
     };
 
-    // if let Err(e) = fs.write_file(slot, &file, uuid, flash) {
     if let Err(e) = fs.write_file(slot, &file, uuid, flash) {
         host.print_error(&format!(64; "Flash write failed: {}", e).unwrap());
         return;
     }
 
-    // host.print_hex_debug(&flash_us.to_le_bytes());
-    // Success — empty body
     let _ = host.write_packet(MsgType::Write, &[]);
 }
 
+// ─── Receive ───────────────────────────────────────────────────────
+
+/// Receive a file from a neighbor HSM via UART1 and store it locally (pin-protected).
+///
+/// Command body: `pin(6) + read_slot(1) + write_slot(1)`
+///
+/// The local HSM sends a Receive request to the neighbor, which responds with
+/// a crypto header (group_id + nonce + auth_tag + public_key) followed by the
+/// encrypted `ProtectedFile`. After decryption and signature verification the
+/// file is written to `write_slot`.
+///
+/// Response: empty body on success.
 #[inline(never)]
 fn cmd_receive(
     host: &mut HostUart,
@@ -307,18 +315,17 @@ fn cmd_receive(
     flash: &mut impl Flash,
     fs: &mut Filesystem,
 ) {
-    // Parse receive_command_t: pin(6) + read_slot(1) + write_slot(1) = 8 bytes
     if buf.len() < 8 {
         host.print_error("Invalid packet length!");
         return;
     }
+
     const READ_SLOT_OFF: usize = 6;
     const WRITE_SLOT_OFF: usize = 7;
 
     let read_slot = buf[READ_SLOT_OFF];
     let write_slot = buf[WRITE_SLOT_OFF];
 
-    // host.print_debug("Checking PIN\n");
     let pin = &buf[0..PIN_LENGTH];
     match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
         SecurityStatus::InvalidLength => {
@@ -329,16 +336,13 @@ fn cmd_receive(
             host.print_error("Nice try! Invalid pin!");
             return;
         }
-        // SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
         SecurityStatus::Success => (),
     };
 
-    // Send receive request to neighbor (just the slot)
-    let mut request_buf = [0u8; 1];
-    request_buf[0] = read_slot;
-    let _ = uart1.write_packet(MsgType::Receive, &request_buf);
+    // Request the file from the neighbor HSM.
+    let _ = uart1.write_packet(MsgType::Receive, &[read_slot]);
 
-    // Read response: nonce(12) + auth_tag(16) + pubkey(32) + encrypted ProtectedFile
+    // Read response: group_id(2) + nonce(12) + auth_tag(16) + pubkey(32) + encrypted file.
     let (cmd, recv_len) = match uart1.read_packet(buf, buf.len() as u16) {
         Ok(v) => v,
         Err(e) => {
@@ -357,8 +361,8 @@ fn cmd_receive(
         return;
     }
 
-    // ── Copy the 60-byte crypto header out of buf before we modify it ──
-    const CRYPTO_HDR: usize = NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE; // 60
+    // Extract the crypto header before modifying `buf`.
+    const CRYPTO_HDR: usize = NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE;
 
     let group_id = u16::from_le_bytes([buf[0], buf[1]]);
     let mut nonce_copy = [0u8; NONCE_SIZE];
@@ -373,11 +377,11 @@ fn cmd_receive(
     );
     let ciphertext_public_key = PublicKey::from(pubkey_bytes);
 
-    // ── Shift ciphertext to start of buf so it aligns with ProtectedFile ──
+    // Shift the encrypted ProtectedFile to the start of `buf`.
     let ct_size = size_of::<ProtectedFile>();
     buf.copy_within(2 + CRYPTO_HDR..2 + CRYPTO_HDR + ct_size, 0);
 
-    // ── Decrypt in-place in buf[..ct_size] ──
+    // Decrypt in-place.
     let ciphertext = &mut buf[..ct_size];
 
     let receive_decrypt_key = match get_receive_decrypt_key(group_id) {
@@ -401,9 +405,7 @@ fn cmd_receive(
         }
     };
 
-    // ── Reinterpret buf as ProtectedFile without copying ──
-    // buf[..ct_size] now contains the decrypted ProtectedFile bytes.
-    // Use zerocopy::Ref to get a reference instead of transmute (which copies).
+    // Reinterpret the decrypted bytes as a ProtectedFile (zero-copy).
     let file: &ProtectedFile =
         match zerocopy::Ref::<&[u8], ProtectedFile>::from_bytes(&buf[..ct_size]) {
             Ok(r) => zerocopy::Ref::<&[u8], ProtectedFile>::into_ref(r),
@@ -418,7 +420,6 @@ fn cmd_receive(
         host.print_error("Invalid signature on received file");
         return;
     }
-    // host.print_debug("Verified signature of received file!");
 
     // Write received file to local flash
     if let Err(e) = fs.write_file(write_slot, file, file.uuid, flash) {
@@ -430,26 +431,23 @@ fn cmd_receive(
     let _ = host.write_packet(MsgType::Receive, &[]);
 }
 
+// ─── Interrogate ───────────────────────────────────────────────────
+
+/// Ask a neighbor HSM for its file list, filtered to groups this HSM can
+/// receive (pin-protected).
+///
+/// Response: `nfiles(4B) + [slot(1) + group_id(2) + name(32)] * nfiles`
+/// (only files whose group this HSM has receive permission for).
 #[inline(never)]
 fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf: &mut [u8]) {
-    host.print_debug("Checking PIN\n");
-    let pin = &buf[0..PIN_LENGTH];
-    match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
-        SecurityStatus::InvalidLength => {
-            host.print_error("Invalid pin length. Pin must be 6 digits.");
-            return;
-        }
-        SecurityStatus::AuthFail => {
-            host.print_error("Nice try! Invalid pin!");
-            return;
-        }
-        SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
-    };
+    if !verify_pin_or_error(host, buf) {
+        return;
+    }
 
-    // Send empty interrogate request to neighbor
+    // Send an empty Interrogate request to the neighbor.
     let _ = uart1.write_packet(MsgType::Interrogate, &[]);
 
-    // Read list response from neighbor (standard binary format)
+    // Read the neighbor's file list response.
     let (cmd, recv_len) = match uart1.read_packet(buf, buf.len() as u16) {
         Ok(v) => v,
         Err(e) => {
@@ -465,7 +463,6 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
         return;
     }
 
-    // ── Parse binary response: nfiles(4) + entries(35 each) ──
     const ENTRY_SIZE: usize = 1 + 2 + MAX_NAME_SIZE; // 35
     const HEADER_SIZE: usize = 4;
 
@@ -477,8 +474,7 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
 
     let total_files = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
 
-    // ── Filter to files this HSM has receive permission for ──
-    // Compact in-place: copy qualifying entries forward
+    // Filter in-place: keep only entries whose group this HSM can receive.
     let mut num_receivable: u32 = 0;
     for i in 0..total_files {
         let src_off = HEADER_SIZE + i * ENTRY_SIZE;
@@ -490,7 +486,6 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
         if has_permission(group_id, PermissionType::Receive) {
             let dst_off = HEADER_SIZE + (num_receivable as usize) * ENTRY_SIZE;
             if dst_off != src_off {
-                // Shift entry forward (safe: dst < src, no overlap)
                 for j in 0..ENTRY_SIZE {
                     buf[dst_off + j] = buf[src_off + j];
                 }
@@ -499,23 +494,31 @@ fn cmd_interrogate(host: &mut HostUart, uart1: &mut HostUart, _pkt_len: u16, buf
         }
     }
 
-    // Overwrite nfiles header with filtered count
     buf[..4].copy_from_slice(&num_receivable.to_le_bytes());
 
     let total_len = HEADER_SIZE + (num_receivable as usize) * ENTRY_SIZE;
     let _ = host.write_packet(MsgType::Interrogate, &buf[..total_len]);
 }
 
+// ─── Listen ────────────────────────────────────────────────────────
+
+/// Wait for an Interrogate or Receive request from a neighbor HSM on UART1
+/// and handle it (not pin-protected).
+///
+/// - **Interrogate**: reply with this HSM's full file list.
+/// - **Receive**: encrypt and send the requested file to the neighbor.
+///
+/// Response to host: empty body on success.
 #[inline(never)]
 fn cmd_listen(
     host: &mut HostUart,
     uart1: &mut HostUart,
     _pkt_len: u16,
-    buf: &mut [u8], // ← was _buf; now used as scratch space
+    buf: &mut [u8],
     flash: &impl Flash,
     fs: &Filesystem,
 ) {
-    // Receive a packet from neighboring HSM via UART1
+    // Read an inbound request from the neighbor HSM.
     let mut uart_buf = [0u8; 41];
     let max_len = uart_buf.len() as u16;
     let (cmd, _read_len) = match uart1.read_packet(&mut uart_buf, max_len) {
@@ -528,18 +531,13 @@ fn cmd_listen(
 
     match cmd {
         MsgType::Interrogate => {
-            host.print_debug("Received interrogate commannd!");
-            // Build file list response in buf:
-            //   n_files(4 bytes u32 LE) + per-file entries (35 bytes each)
-            // Entry: slot(1) + group_id(2) + name(32)
-            const ENTRY_SIZE: usize = 1 + 2 + MAX_NAME_SIZE; // 35
-            const HEADER_SIZE: usize = 4; // n_files u32
-
-            // On-flash ProtectedFile starts with: in_use(4) + group_id(2) + name(32) = 38
-            const FILE_HDR_SIZE: usize = 4 + 2 + MAX_NAME_SIZE; // 38
+            // Build the same file-list response format used by cmd_list.
+            const ENTRY_SIZE: usize = 1 + 2 + MAX_NAME_SIZE;
+            const HEADER_SIZE: usize = 4;
+            const FILE_HDR_SIZE: usize = 4 + 2 + MAX_NAME_SIZE;
 
             let mut nfiles: u32 = 0;
-            let resp_off = FILE_HDR_SIZE; // response starts after scratch area
+            let resp_off = FILE_HDR_SIZE;
 
             for slot in 0..(MAX_FILE_COUNT as u8) {
                 let entry = match fs.get_file_metadata(slot) {
@@ -550,7 +548,6 @@ fn cmd_listen(
                     continue;
                 }
 
-                // Read only the first 38 bytes (file header) from flash
                 flash.read(entry.flash_addr, &mut buf[..FILE_HDR_SIZE]);
 
                 let in_use = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
@@ -558,13 +555,11 @@ fn cmd_listen(
                     continue;
                 }
 
-                // Extract group_id and name from scratch area
                 let group_lo = buf[4];
                 let group_hi = buf[5];
                 let mut name = [0u8; MAX_NAME_SIZE];
                 name.copy_from_slice(&buf[6..6 + MAX_NAME_SIZE]);
 
-                // Append entry to response area (after scratch)
                 let entry_off = resp_off + HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
                 buf[entry_off] = slot;
                 buf[entry_off + 1] = group_lo;
@@ -574,18 +569,14 @@ fn cmd_listen(
                 nfiles += 1;
             }
 
-            // Write nfiles header
             buf[resp_off..resp_off + 4].copy_from_slice(&nfiles.to_le_bytes());
 
             let total_len = HEADER_SIZE + (nfiles as usize) * ENTRY_SIZE;
             let _ = uart1.write_packet(MsgType::Interrogate, &buf[resp_off..resp_off + total_len]);
-            host.print_debug("Responded to interrogate!");
         }
         MsgType::Receive => {
-            // host.print_debug("Received receive command!");
             let slot = uart_buf[0];
 
-            // Read file into a stack-allocated ProtectedFile (ONE copy only)
             let mut file = ProtectedFile::default();
             match fs.read_file_no_verify(&mut file, slot, flash) {
                 Ok(()) => (),
@@ -617,7 +608,7 @@ fn cmd_listen(
                 }
             };
 
-            // Encrypt in-place via transmute_mut! to avoid extra copies and allocations
+            // Encrypt the file in-place via transmute_mut to avoid extra copies.
             let file_buf: &mut [u8; size_of::<ProtectedFile>()] = transmute_mut!(&mut file);
             let (nonce, auth_tag, cipher_public_key) = match asymmetric_encrypt_in_place::<
                 { size_of::<ProtectedFile>() },
@@ -648,6 +639,5 @@ fn cmd_listen(
         }
     }
 
-    // Success — blank message to host
     let _ = host.write_packet(MsgType::Listen, &[]);
 }
