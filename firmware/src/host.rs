@@ -1,34 +1,45 @@
-//! Host messaging protocol over UART
+//! eCTF host messaging implementation.
+//! Follows the protocol defined in the eCTF Host Interface specification:
+//!   ```
+//!   [MAGIC 1B] [OPCODE 1B] [LENGTH 2B] [BODY ...]
+//!   ```
 //!
-//! Implements the eCTF packet protocol:
-//!   [Magic '%'] [Command byte] [Length u16] [Payload...]
-//!
-//! Flow control: ACK expected every 256 bytes for non-debug messages.
+//! After the sender transmits the 4-byte header, the receiver sends an ACK.
+//! The body is then sent in 256-byte chunks, each followed by an ACK from the
+//! receiver. Debug messages are never ACKed.
 
 use embassy_mspm0::mode::Blocking;
 use embassy_mspm0::uart::Uart;
 
-/// Magic byte that starts every message header
+/// Magic byte that begins every message header.
 pub const MSG_MAGIC: u8 = b'%';
 
-/// Message types matching the C enum `msg_type_t`
+/// Message opcodes as defined by the eCTF Host Interface specification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum MsgType {
+    /// List all files on the HSM.
     List = b'L',
+    /// Read a file from the HSM.
     Read = b'R',
+    /// Write a file to the HSM.
     Write = b'W',
+    /// Receive a file from a neighbor HSM.
     Receive = b'C',
+    /// Interrogate a neighbor HSM for its file list.
     Interrogate = b'I',
+    /// Prepare HSM to receive on UART1 (Interrogate or Receive).
     Listen = b'N',
+    /// Acknowledge receipt of data.
     Ack = b'A',
+    /// Debug output (never ACKed, ignored by test framework).
     Debug = b'D',
+    /// Report an error to the host (causes host tool to exit).
     Error = b'E',
-    Challenge = b'Q',
-    Response = b'P',
 }
 
 impl MsgType {
+    /// Parse a raw byte into a known message type, if valid.
     pub fn from_byte(b: u8) -> Option<Self> {
         match b {
             b'L' => Some(Self::List),
@@ -40,14 +51,12 @@ impl MsgType {
             b'A' => Some(Self::Ack),
             b'D' => Some(Self::Debug),
             b'E' => Some(Self::Error),
-            b'Q' => Some(Self::Challenge),
-            b'P' => Some(Self::Response),
             _ => None,
         }
     }
 }
 
-/// Message status codes
+/// Outcome of a send or receive operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MsgStatus {
     Ok,
@@ -64,12 +73,12 @@ impl core::fmt::Display for MsgStatus {
             MsgStatus::BadPtr => write!(f, "Bad pointer"),
             MsgStatus::NoAck => write!(f, "No ACK"),
             MsgStatus::BadLen => write!(f, "Bad length"),
-            MsgStatus::UartError(err_num) => write!(f, "UART Error: {}", err_num),
+            MsgStatus::UartError(err_code) => write!(f, "UART Error: {}", err_code),
         }
     }
 }
 
-/// Packed message header: magic (1) + cmd (1) + len (2) = 4 bytes
+/// Wire-format message header (4 bytes): magic (1) + opcode (1) + length (2)
 #[repr(C, packed)]
 #[derive(Clone, Copy, Default)]
 pub struct MsgHeader {
@@ -78,9 +87,13 @@ pub struct MsgHeader {
     pub len: u16,
 }
 
+/// Size of the packed header in bytes.
 pub const MSG_HEADER_SIZE: usize = 4;
 
-/// Newtype wrapper around embassy's `Uart` for the eCTF host protocol.
+/// Number of payload bytes between ACK checkpoints.
+const ACK_INTERVAL: usize = 256;
+
+/// Wrapper around an Embassy blocking UART that speaks the eCTF host protocol.
 pub struct HostUart<'d> {
     uart: Uart<'d, Blocking>,
 }
@@ -89,6 +102,8 @@ impl<'d> HostUart<'d> {
     pub fn new(uart: Uart<'d, Blocking>) -> Self {
         Self { uart }
     }
+
+    // ── Byte-level I/O ──────────────────────────────────────────────
 
     fn read_byte(&mut self) -> Result<u8, i32> {
         let mut buf = [0u8; 1];
@@ -104,10 +119,12 @@ impl<'d> HostUart<'d> {
         let _ = self.uart.blocking_write(block);
     }
 
-    /// Read `len` bytes from UART, sending ACK every 256 bytes.
+    // ── Chunked I/O with ACK flow control ───────────────────────────
+
+    /// Read `len` bytes from UART into `buf`, sending an ACK every 256 bytes.
     fn read_bytes(&mut self, buf: &mut [u8], len: u16) -> MsgStatus {
         for i in 0..len as usize {
-            if i % 256 == 0 && i != 0 {
+            if i % ACK_INTERVAL == 0 && i != 0 {
                 let _ = self.write_ack();
             }
             match self.read_byte() {
@@ -118,30 +135,26 @@ impl<'d> HostUart<'d> {
         MsgStatus::Ok
     }
 
-    /// Read a message header, skipping bytes until magic '%' is found.
+    /// Read a message header, discarding bytes until the magic byte is found.
     fn read_header(&mut self) -> MsgHeader {
-        let mut hdr = MsgHeader::default();
-
-        // Spin until we see the magic byte
+        // Synchronise on the magic byte.
         loop {
             match self.read_byte() {
-                Ok(b) if b == MSG_MAGIC => break,
-                Ok(_) => continue,
-                Err(_) => continue,
+                Ok(MSG_MAGIC) => break,
+                _ => continue,
             }
         }
-        hdr.magic = MSG_MAGIC;
-        hdr.cmd = self.read_byte().unwrap_or(0);
 
-        // Read 2-byte length (little-endian)
+        let cmd = self.read_byte().unwrap_or(0);
+
         let mut len_buf = [0u8; 2];
         let _ = self.read_bytes(&mut len_buf, 2);
-        hdr.len = u16::from_le_bytes(len_buf);
+        let len = u16::from_le_bytes(len_buf);
 
-        hdr
+        MsgHeader { magic: MSG_MAGIC, cmd, len }
     }
 
-    /// Wait for an ACK from the remote side.
+    /// Block until an ACK header arrives; return `NoAck` if anything else appears.
     fn read_ack(&mut self) -> MsgStatus {
         let hdr = self.read_header();
         if hdr.cmd == MsgType::Ack as u8 {
@@ -151,7 +164,11 @@ impl<'d> HostUart<'d> {
         }
     }
 
-    /// Write raw bytes to UART, expecting ACK every 256 bytes if `should_ack`.
+    /// Write raw bytes from one or more slices, optionally expecting an ACK
+    /// every 256 bytes.
+    ///
+    /// The slices in `chunks` are treated as a single contiguous stream;
+    /// `total_len` caps the number of bytes actually sent.
     pub fn write_bytes_raw(
         &mut self,
         chunks: &[&[u8]],
@@ -161,31 +178,29 @@ impl<'d> HostUart<'d> {
         let limit = total_len as usize;
         let mut bytes_written: usize = 0;
 
-        // Flatten chunks into a seamless byte stream, batching writes
-        // up to the next ACK boundary (every 256 bytes).
         for chunk in chunks.iter() {
             let mut offset = 0;
             while offset < chunk.len() && bytes_written < limit {
-                // How many bytes until the next ACK checkpoint?
+                // Determine batch size: go up to the next ACK boundary,
+                // or to the end of this chunk / total, whichever is smallest.
                 let next_ack = if should_ack {
-                    256 - (bytes_written % 256)
+                    ACK_INTERVAL - (bytes_written % ACK_INTERVAL)
                 } else {
                     limit - bytes_written
                 };
 
-                // Clamp to: remaining in this chunk, remaining overall, next ACK point
-                let remaining_chunk = chunk.len() - offset;
-                let remaining_total = limit - bytes_written;
-                let batch = remaining_chunk.min(remaining_total).min(next_ack);
+                let batch = (chunk.len() - offset)
+                    .min(limit - bytes_written)
+                    .min(next_ack);
 
                 self.write_block(&chunk[offset..offset + batch]);
                 offset += batch;
                 bytes_written += batch;
 
-                // Send ACK at every 256-byte boundary (not at byte 0)
+                // Wait for ACK at every 256-byte boundary (not at the very end).
                 if should_ack
                     && bytes_written > 0
-                    && bytes_written.is_multiple_of(256)
+                    && bytes_written.is_multiple_of(ACK_INTERVAL)
                     && bytes_written < limit
                     && self.read_ack() != MsgStatus::Ok
                 {
@@ -196,24 +211,26 @@ impl<'d> HostUart<'d> {
 
         MsgStatus::Ok
     }
-    /// Send an ACK message (header only, no payload, no response expected).
+
+    // ── Packet-level API ────────────────────────────────────────────
+
+    /// Send a bare ACK message (header only, no payload, no response expected).
     pub fn write_ack(&mut self) -> MsgStatus {
         self.write_packet(MsgType::Ack, &[]);
         MsgStatus::Ok
     }
 
-    /// Send a complete packet.
+    /// Send a complete packet built from multiple body slices.
     ///
-    /// Protocol:
-    /// 1. Send header
-    /// 2. For non-ACK, non-DEBUG: wait for ACK
-    /// 3. Send payload (with ACK every 256 bytes for non-DEBUG)
-    /// 4. Wait for final ACK (non-DEBUG)
-    pub fn write_packet_chunks(&mut self, msg_type: MsgType, data_chunks: &[&[u8]]) -> MsgStatus {
-        // let len = data.len() as u16;
-        let total_len: u16 = data_chunks.iter().map(|c| c.len() as u16).sum();
+    /// Protocol sequence (non-debug, non-ACK):
+    ///   1. Send 4-byte header
+    ///   2. Wait for header ACK
+    ///   3. Send body in 256-byte chunks, ACK after each
+    ///   4. Wait for final ACK
+    pub fn write_packet_chunks(&mut self, msg_type: MsgType, body_chunks: &[&[u8]]) -> MsgStatus {
+        let total_len: u16 = body_chunks.iter().map(|c| c.len() as u16).sum();
 
-        // Build and send header
+        // Transmit header.
         let hdr = MsgHeader {
             magic: MSG_MAGIC,
             cmd: msg_type as u8,
@@ -227,23 +244,23 @@ impl<'d> HostUart<'d> {
             return result;
         }
 
-        // ACKs don't need a response
+        // ACK messages need no further handshake.
         if msg_type == MsgType::Ack {
             return MsgStatus::Ok;
         }
 
-        // Wait for header ACK (not needed for debug messages)
+        // Wait for the receiver to ACK the header (debug is exempt).
         if msg_type != MsgType::Debug && self.read_ack() != MsgStatus::Ok {
             return MsgStatus::NoAck;
         }
 
-        // Send payload if present
+        // Transmit body with per-chunk ACK flow control (debug is exempt).
         if total_len > 0 {
-            let result = self.write_bytes_raw(data_chunks, total_len, msg_type != MsgType::Debug);
+            let result =
+                self.write_bytes_raw(body_chunks, total_len, msg_type != MsgType::Debug);
             if result != MsgStatus::Ok {
                 return result;
             }
-            // Final ACK for the last block
             if msg_type != MsgType::Debug && self.read_ack() != MsgStatus::Ok {
                 return MsgStatus::NoAck;
             }
@@ -251,15 +268,16 @@ impl<'d> HostUart<'d> {
 
         MsgStatus::Ok
     }
-    pub fn write_packet(&mut self, msg_type: MsgType, data: &[u8]) -> MsgStatus {
-        self.write_packet_chunks(msg_type, &[data])
+
+    /// Send a complete packet with a single contiguous body slice.
+    pub fn write_packet(&mut self, msg_type: MsgType, body: &[u8]) -> MsgStatus {
+        self.write_packet_chunks(msg_type, &[body])
     }
 
     /// Read a complete packet from UART.
     ///
-    /// Returns (message_type, bytes_read).
-    /// `buf` will contain the payload.
-    /// `max_len` limits how many bytes we accept; pass 0 for unlimited (up to buf size).
+    /// Returns `(message_type, body_length)`. The body is written into `buf`.
+    /// `max_len` caps the accepted body size; pass 0 to accept up to `buf.len()`.
     pub fn read_packet(
         &mut self,
         buf: &mut [u8],
@@ -270,23 +288,21 @@ impl<'d> HostUart<'d> {
         let cmd = MsgType::from_byte(header.cmd).ok_or(MsgStatus::BadLen)?;
         let len = header.len;
 
-        // Check length limit (if max_len != 0 and payload exceeds it)
         if max_len != 0 && len > max_len {
             return Err(MsgStatus::BadLen);
         }
 
         if cmd != MsgType::Ack {
-            // ACK the header
+            // ACK the header so the sender begins transmitting the body.
             let _ = self.write_ack();
 
-            // Read payload
             if len > 0 && !buf.is_empty() {
                 if self.read_bytes(buf, len) != MsgStatus::Ok {
                     return Err(MsgStatus::NoAck);
                 }
             }
 
-            // ACK the final block
+            // ACK receipt of the final body chunk.
             if len > 0 {
                 let _ = self.write_ack();
             }
@@ -295,11 +311,15 @@ impl<'d> HostUart<'d> {
         Ok((cmd, len))
     }
 
-    /// Write data as hex-encoded bytes (2 ASCII chars per byte).
+    // ── Hex-encoded output ──────────────────────────────────────────
+
+    /// Send `data` as hex-encoded ASCII (2 chars per byte).
+    ///
+    /// The header's length field is set to `data.len() * 2`. ACK checkpoints
+    /// occur every 128 source bytes (256 hex chars).
     pub fn write_hex(&mut self, msg_type: MsgType, data: &[u8]) -> MsgStatus {
         let hex_len = (data.len() * 2) as u16;
 
-        // Send header with doubled length
         let hdr = MsgHeader {
             magic: MSG_MAGIC,
             cmd: msg_type as u8,
@@ -314,36 +334,37 @@ impl<'d> HostUart<'d> {
             return MsgStatus::NoAck;
         }
 
-        // Send each byte as 2 hex ASCII characters
         for (i, &byte) in data.iter().enumerate() {
+            // ACK every 128 source bytes (= 256 hex chars on the wire).
             if i % 128 == 0 && i != 0 {
                 if msg_type != MsgType::Debug && self.read_ack() != MsgStatus::Ok {
                     return MsgStatus::NoAck;
                 }
             }
-            let hi = HEX_TABLE[(byte >> 4) as usize];
-            let lo = HEX_TABLE[(byte & 0x0f) as usize];
-            self.write_byte(hi);
-            self.write_byte(lo);
+            self.write_byte(HEX_TABLE[(byte >> 4) as usize]);
+            self.write_byte(HEX_TABLE[(byte & 0x0F) as usize]);
         }
 
         MsgStatus::Ok
     }
 
-    /// Send an error message to the host.
+    // ── Convenience helpers ─────────────────────────────────────────
+
+    /// Send an Error message to the host (causes the host tool to exit).
     pub fn print_error(&mut self, msg: &str) {
         let _ = self.write_packet(MsgType::Error, msg.as_bytes());
     }
 
-    /// Send a debug message to the host.
+    /// Send a Debug message to the host (ignored by the test framework).
     pub fn print_debug(&mut self, msg: &str) {
         let _ = self.write_packet(MsgType::Debug, msg.as_bytes());
     }
 
-    /// Send debug output as hex.
+    /// Send raw bytes as hex-encoded debug output.
     pub fn print_hex_debug(&mut self, data: &[u8]) {
         let _ = self.write_hex(MsgType::Debug, data);
     }
 }
 
+/// Nibble-to-ASCII lookup table for hex encoding.
 const HEX_TABLE: [u8; 16] = *b"0123456789abcdef";
