@@ -5,7 +5,6 @@ use chacha20::cipher::{KeyIvInit, StreamCipher};
 use core::num::NonZeroU32;
 use embassy_mspm0::peripherals;
 use embassy_mspm0::trng::Trng;
-use heapless::Vec;
 use rand_core::{CryptoRng, RngCore};
 use rand_core_09::TryRngCore;
 use zeroize::Zeroize;
@@ -96,16 +95,6 @@ impl SecureRng {
         nonce.zeroize();
 
         Ok(Self { cipher })
-    }
-
-    /// Generate N random bytes from the CSPRNG.
-    pub fn random_bytes<const N: usize>(&mut self) -> Result<Vec<u8, N>, RngError> {
-        // Zeroed plaintext → the ciphertext *is* the keystream.
-        let mut output = [0; N];
-        self.cipher
-            .try_apply_keystream(&mut output)
-            .map_err(|_| RngError::GenerateFailed)?;
-        Ok(Vec::from(output))
     }
 
     /// Generate N random bytes from the CSPRNG.

@@ -23,3 +23,11 @@ MEMORY
 /* _stack_start = initial SP value, first word of the vector table */
 _stack_start = ORIGIN(RAM) + LENGTH(RAM);
 
+SECTIONS
+{
+  .rodata : ALIGN(4)
+  {
+    *(.rodata .rodata.*);
+    . = ALIGN(4);
+  } > APP2
+}

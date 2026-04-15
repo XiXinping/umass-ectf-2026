@@ -14,7 +14,7 @@ use ed25519_dalek::hazmat::raw_sign;
 use ed25519_dalek::{Signature, Signer, Verifier};
 use embassy_time::Instant;
 use hmac::{Hmac, Mac};
-use serde::{Deserialize, Serialize};
+// use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Sha512};
 use x25519_dalek::{PublicKey, StaticSecret};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, transmute, transmute_mut};
@@ -187,7 +187,7 @@ pub struct UnprotectedFile {
 }
 
 #[repr(Rust, packed)]
-#[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub struct FileMetadata {
     pub slot: u8,
     pub group_id: u16,
@@ -438,12 +438,6 @@ impl Filesystem {
 
     // ─── Public API ─────────────────────────────────────────────────
 
-    /// Check whether a file slot is occupied.
-    pub fn is_slot_in_use(&self, slot: u8, flash: &impl Flash) -> Result<bool, FsError> {
-        let file = self.read_file(slot, flash)?;
-        Ok(file.in_use == FILE_IN_USE)
-    }
-
     /// Write a file to persistent flash storage.
     pub fn write_file(
         &mut self,
@@ -505,14 +499,6 @@ impl Filesystem {
         for i in 0..pages_needed {
             let erase_start = Instant::now();
             flash.erase_page(flash_addr + FLASH_PAGE_SIZE * i)?;
-            if let Some(boot) = boot {
-                info!(
-                    "[+{} ms] write_file erase_page {} done (step={} ms)",
-                    elapsed_ms(boot),
-                    i,
-                    elapsed_ms(erase_start)
-                );
-            }
         }
 
         // Write the file to flash
@@ -533,32 +519,7 @@ impl Filesystem {
         Ok(())
     }
 
-    /// Read a file from persistent flash storage.
-    pub fn read_file(&self, slot: u8, flash: &impl Flash) -> Result<ProtectedFile, FsError> {
-        let idx = Self::validate_slot(slot)?;
-
-        let entry = &self.fat[idx];
-        if entry.is_empty() {
-            return Err(FsError::FatEntryEmpty);
-        }
-
-        let len = entry.length as usize;
-        if len > MAX_SERIALIZED_FILE {
-            return Err(FsError::FatEntryTooFat);
-        }
-        let mut buf = [0u8; size_of::<ProtectedFile>()];
-        // Read from flash into bytes
-        flash.read(entry.flash_addr, &mut buf[..len]);
-        // Interpret bytes as ProtectedFile struct
-        let file: ProtectedFile = transmute!(buf);
-
-        match file.verify_signature() {
-            Ok(()) => Ok(file),
-            Err(_) => Err(FsError::InvalidSignature),
-        }
-    }
-
-    pub fn read_file_in(
+    pub fn read_file(
         &self,
         out: &mut ProtectedFile,
         slot: u8,
@@ -582,6 +543,31 @@ impl Filesystem {
 
         out.verify_signature()
             .map_err(|_| FsError::InvalidSignature)?;
+
+        Ok(())
+    }
+
+    pub fn read_file_no_verify(
+        &self,
+        out: &mut ProtectedFile,
+        slot: u8,
+        flash: &impl Flash,
+    ) -> Result<(), FsError> {
+        let idx = Self::validate_slot(slot)?;
+
+        let entry = &self.fat[idx];
+
+        if entry.is_empty() {
+            return Err(FsError::FatEntryEmpty);
+        }
+
+        let len = entry.length as usize;
+        if len > MAX_SERIALIZED_FILE {
+            return Err(FsError::FatEntryTooFat);
+        }
+        let buf: &mut [u8; size_of::<ProtectedFile>()] = transmute_mut!(out);
+        // Read from flash into bytes
+        flash.read(entry.flash_addr, &mut buf[..len]);
 
         Ok(())
     }

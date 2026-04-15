@@ -9,7 +9,6 @@ use crate::aes_hardware_accel::GcmEngine;
 use crate::permission::EncryptKey;
 use crate::secrets;
 use curve25519_dalek::Scalar;
-use heapless::Vec;
 use hkdf::Hkdf;
 use sha2::{Sha256, Sha512};
 // X25519 types for ECDH encryption/decryption
@@ -17,7 +16,7 @@ use x25519_dalek::{PublicKey, StaticSecret};
 
 // Ed25519 types for signing/verification
 use ed25519_dalek::{
-    Signature, Signer, SigningKey, Verifier, VerifyingKey,
+    Signature, Verifier, VerifyingKey,
     hazmat::{ExpandedSecretKey, raw_sign},
 };
 
@@ -91,22 +90,6 @@ pub enum AuthError {
     VerificationFailed,
     /// Signature bytes could not be parsed.
     BadSignatureFormat,
-}
-
-/// A struct containing the result of calling asymmetric_encrypt(). The result of a hybrid
-/// encryption contains the ciphertext, the AES shared secret, and an AES-GCM authentication tag.
-#[repr(C)]
-pub struct AsymmetricEncrypted<const N: usize> {
-    pub ciphertext: [u8; N],
-    pub nonce: [u8; 12],
-    pub cipher_public_key: PublicKey,
-    pub auth_tag: [u8; AUTH_TAG_SIZE],
-}
-
-pub struct AsymmetricEncryptedMetadata {
-    pub nonce: [u8; 12],
-    pub cipher_public_key: PublicKey,
-    pub auth_tag: [u8; AUTH_TAG_SIZE],
 }
 
 /// Stores pre-computed Diffie-Hellman shared secrets
@@ -349,45 +332,6 @@ fn read_tag_into(eng: &GcmEngine, out: &mut [u8; AUTH_TAG_SIZE]) -> Result<(), C
 
 // ─── Public AES-GCM API (hardware-backed) ─────────────────────────
 
-pub fn aes_gcm_encrypt<const N: usize>(
-    plaintext: &[u8],
-    key: &[u8; 16],
-    iv: &[u8; 12],
-    associated_data: &[u8],
-) -> Result<(Vec<u8, N>, [u8; AUTH_TAG_SIZE]), CryptoError> {
-    let eng = GcmEngine::new();
-
-    eng.load_key_128(key);
-
-    if !begin_gcm_session(
-        &eng,
-        iv,
-        true,
-        plaintext.len() as u32,
-        associated_data.len() as u32,
-    ) {
-        return Err(CryptoError::HardwareTimeout);
-    }
-
-    if !submit_aad(&eng, associated_data) {
-        return Err(CryptoError::HardwareTimeout);
-    }
-
-    let mut buffer: Vec<u8, N> = Vec::new();
-    buffer
-        .resize(plaintext.len(), 0)
-        .map_err(|_| CryptoError::InvalidInput)?;
-
-    if !run_pipeline(&eng, plaintext, &mut buffer, plaintext.len()) {
-        return Err(CryptoError::AesGcmEncryptError);
-    }
-
-    let mut auth_tag = [0u8; AUTH_TAG_SIZE];
-    read_tag_into(&eng, &mut auth_tag)?;
-
-    Ok((buffer, auth_tag))
-}
-
 pub fn aes_gcm_encrypt_in_place(
     plaintext: &mut [u8],
     key: &[u8; 16],
@@ -430,45 +374,6 @@ pub fn aes_gcm_encrypt_in_place(
     read_tag_into(&eng, &mut auth_tag)?;
 
     Ok(auth_tag)
-}
-
-pub fn aes_gcm_decrypt<const N: usize>(
-    ciphertext: &[u8],
-    key: &[u8; 16],
-    iv: &[u8; 12],
-    auth_tag: &[u8; AUTH_TAG_SIZE],
-    associated_data: &[u8],
-) -> Result<Vec<u8, N>, CryptoError> {
-    let eng = GcmEngine::new();
-
-    eng.load_key_128(key);
-
-    if !begin_gcm_session(
-        &eng,
-        iv,
-        false,
-        ciphertext.len() as u32,
-        associated_data.len() as u32,
-    ) {
-        return Err(CryptoError::HardwareTimeout);
-    }
-
-    if !submit_aad(&eng, associated_data) {
-        return Err(CryptoError::HardwareTimeout);
-    }
-
-    let mut buffer: Vec<u8, N> = Vec::new();
-    buffer
-        .resize(ciphertext.len(), 0)
-        .map_err(|_| CryptoError::InvalidInput)?;
-
-    if !run_pipeline(&eng, ciphertext, &mut buffer, ciphertext.len()) {
-        return Err(CryptoError::AesGcmDecryptError);
-    }
-
-    verify_computed_tag(&eng, auth_tag)?;
-
-    Ok(buffer)
 }
 
 pub fn aes_gcm_decrypt_in_place(
@@ -538,26 +443,6 @@ pub fn asymmetric_encrypt_in_place<const N: usize>(
 /// shared AES key via ECDH with the static private key and the
 /// per-message ephemeral public key, then verifies + decrypts via
 /// hardware AES-128-GCM.
-pub fn asymmetric_decrypt<const N: usize>(
-    ciphertext: &Vec<u8, N>,
-    nonce: &[u8; 12],
-    cipher_public_key: &PublicKey,
-    auth_tag: &[u8; AUTH_TAG_SIZE],
-    private_key: &StaticSecret,
-) -> Result<Vec<u8, N>, CryptoError> {
-    let shared_secret = private_key.diffie_hellman(cipher_public_key);
-
-    let hk = Hkdf::<Sha256>::new(None, shared_secret.as_bytes());
-    let mut aes_key: [u8; 16] = [0; 16];
-    hk.expand(b"aes-gcm key", &mut aes_key)
-        .map_err(|_| CryptoError::AsymmetricKeyError)?;
-
-    let plaintext = aes_gcm_decrypt(ciphertext.as_slice(), &aes_key, nonce, auth_tag, &[])
-        .map_err(|_| CryptoError::AesGcmDecryptError)?;
-
-    Ok(plaintext)
-}
-
 pub fn asymmetric_decrypt_in_place(
     ciphertext: &mut [u8],
     nonce: &[u8; 12],
@@ -620,3 +505,4 @@ pub fn ecc_verify_file_digest(
         .verify(digest, signature)
         .map_err(|_| AuthError::VerificationFailed)
 }
+

@@ -70,15 +70,13 @@ fn main() -> ! {
     critical_section::with(|cs: critical_section::CriticalSection<'_>| {
         *GLOBAL_RNG.borrow(cs).borrow_mut() = Some(rng);
     });
-    
 
     let mut buf = [0u8; MAX_MSG_SIZE];
     loop {
-        
         match host.read_packet(&mut buf, MAX_MSG_SIZE as u16) {
             Ok((msg_type, len)) => {
-                host.print_debug("Got cmd:");
-                host.print_hex_debug(&[msg_type as u8]);
+                // host.print_debug("Got cmd:");
+                // host.print_hex_debug(&[msg_type as u8]);
                 command::handle_command(
                     &mut host,
                     &mut transfer,

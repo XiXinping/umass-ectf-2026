@@ -1,25 +1,24 @@
 //! Command dispatch and handlers for the eCTF host protocol.
 
 use embassy_time::Instant;
-use heapless::{Vec, format};
 use x25519_dalek::{PublicKey, StaticSecret};
-use zerocopy::transmute;
 use zerocopy::transmute_mut;
 
 use crate::authentication::{PIN_LENGTH, SecurityStatus, verify_pin};
 use crate::crypto::{
-    AUTH_TAG_SIZE, CryptoError, NONCE_SIZE, PUBLIC_KEY_SIZE, asymmetric_decrypt_in_place,
+    AUTH_TAG_SIZE, NONCE_SIZE, PUBLIC_KEY_SIZE, asymmetric_decrypt_in_place,
     asymmetric_encrypt_in_place,
 };
 use crate::host::{HostUart, MsgType};
 use crate::permission::{
     self, PermissionType, get_receive_decrypt_key, get_receive_encrypt_key, has_permission,
 };
-use crate::secrets::{self, PIN_HASH, PIN_SALT};
+use crate::secrets::{PIN_HASH, PIN_SALT};
 use crate::secure_filesystem::{
-    self, FILE_IN_USE, FileError, FileMetadata, Filesystem, Flash, FsError, MAX_CONTENTS_SIZE,
-    MAX_FILE_COUNT, MAX_NAME_SIZE, ProtectedFile, UUID_SIZE,
+    self, FILE_IN_USE, FileError, Filesystem, Flash, FsError, MAX_CONTENTS_SIZE, MAX_FILE_COUNT,
+    MAX_NAME_SIZE, ProtectedFile, UUID_SIZE,
 };
+use heapless::format;
 
 pub const TRANSFER_PAYLOAD_SIZE: usize =
     size_of::<ProtectedFile>() + NONCE_SIZE + AUTH_TAG_SIZE + PUBLIC_KEY_SIZE + 2;
@@ -162,7 +161,7 @@ fn cmd_read(host: &mut HostUart, pkt_len: u16, buf: &[u8], flash: &impl Flash, f
     host.print_debug("Read: Parsed slot and UUID\n");
 
     let mut file = ProtectedFile::default();
-    match fs.read_file_in(&mut file, slot, flash) {
+    match fs.read_file(&mut file, slot, flash) {
         Ok(()) => (),
         Err(FsError::EmptySlot) => {
             host.print_error(&format!(20; "Slot {} is empty", slot).unwrap());
@@ -290,6 +289,7 @@ fn cmd_write(
         }
     };
 
+    // if let Err(e) = fs.write_file(slot, &file, uuid, flash) {
     if let Err(e) = fs.write_file(slot, &file, uuid, flash) {
         host.print_error(&format!(64; "Flash write failed: {}", e).unwrap());
         return;
@@ -589,7 +589,7 @@ fn cmd_listen(
 
             // Read file into a stack-allocated ProtectedFile (ONE copy only)
             let mut file = ProtectedFile::default();
-            match fs.read_file_in(&mut file, slot, flash) {
+            match fs.read_file_no_verify(&mut file, slot, flash) {
                 Ok(()) => (),
                 Err(FsError::EmptySlot) | Err(FsError::InvalidFatEntry) => {
                     host.print_error(&format!(20; "Slot {} is empty", slot).unwrap());
