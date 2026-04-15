@@ -1,6 +1,5 @@
 //! Command dispatch and handlers for the eCTF host protocol.
 
-use embassy_time::Instant;
 use x25519_dalek::{PublicKey, StaticSecret};
 use zerocopy::transmute_mut;
 
@@ -320,7 +319,7 @@ fn cmd_receive(
     let read_slot = buf[READ_SLOT_OFF];
     let write_slot = buf[WRITE_SLOT_OFF];
 
-    host.print_debug("Checking PIN\n");
+    // host.print_debug("Checking PIN\n");
     let pin = &buf[0..PIN_LENGTH];
     match verify_pin(pin, &PIN_SALT, &PIN_HASH) {
         SecurityStatus::InvalidLength => {
@@ -331,7 +330,8 @@ fn cmd_receive(
             host.print_error("Nice try! Invalid pin!");
             return;
         }
-        SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
+        // SecurityStatus::Success => host.print_debug("Pin successfully verified!"),
+        SecurityStatus::Success => (),
     };
 
     // Send receive request to neighbor (just the slot)
@@ -419,11 +419,10 @@ fn cmd_receive(
         host.print_error("Invalid signature on received file");
         return;
     }
-    host.print_debug("Verified signature of received file!");
+    // host.print_debug("Verified signature of received file!");
 
     // Write received file to local flash
-    let flash_write_start = Instant::now();
-    if let Err(e) = fs.write_file_timed(write_slot, file, file.uuid, flash, flash_write_start) {
+    if let Err(e) = fs.write_file(write_slot, file, file.uuid, flash) {
         host.print_error(&format!(64; "Writing received file failed: {}", e).unwrap());
         return;
     }
@@ -584,7 +583,7 @@ fn cmd_listen(
             host.print_debug("Responded to interrogate!");
         }
         MsgType::Receive => {
-            host.print_debug("Received receive command!");
+            // host.print_debug("Received receive command!");
             let slot = uart_buf[0];
 
             // Read file into a stack-allocated ProtectedFile (ONE copy only)

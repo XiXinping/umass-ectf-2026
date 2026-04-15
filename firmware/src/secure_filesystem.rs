@@ -3,21 +3,17 @@
 
 use crate::crypto::{
     AUTH_TAG_SIZE, CryptoError, NONCE_SIZE, PUBLIC_KEY_SIZE, SIGNATURE_SIZE,
-    asymmetric_decrypt_in_place, asymmetric_encrypt_in_place, ecc_sign_file_digest,
-    ecc_verify_file_digest,
+    asymmetric_decrypt_in_place, asymmetric_encrypt_in_place,
 };
-use crate::permission::{self, get_verifying_key, has_permission};
+use crate::permission::{self, get_verifying_key};
 
 use core::mem;
-use defmt::{info, println};
+use ed25519_dalek::Signature;
 use ed25519_dalek::hazmat::raw_sign;
-use ed25519_dalek::{Signature, Signer, Verifier};
-use embassy_time::Instant;
 use hmac::{Hmac, Mac};
-// use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Sha512};
 use x25519_dalek::{PublicKey, StaticSecret};
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, transmute, transmute_mut};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, transmute_mut};
 
 // ─── Constants (must match C functional spec) ───────────────────────
 pub const MAX_FILE_COUNT: usize = 8;
@@ -156,19 +152,14 @@ pub struct ProtectedFile {
     pub in_use: u32,
     pub group_id: u16,
     pub name: [u8; MAX_NAME_SIZE],
-    // pub uuid: Uuid,
     pub uuid: [u8; 16],
     pub nonce: [u8; NONCE_SIZE],
     pub auth_tag: [u8; 16],
-    // pub signature: Signature,
     pub signature: [u8; 64],
-    // pub ciphertext_public_key: PublicKey,
     pub ciphertext_public_key: [u8; 32],
-    // The encrypted contents of the file.
-    // pub contents: Vec<u8, MAX_CONTENTS_SIZE>,
-    // pub contents: Contents,
     // The plaintext may be shorter than the ciphertext
     pub plaintext_len: usize,
+    // The encrypted contents of the file.
     pub ciphertext: [u8; MAX_CONTENTS_SIZE],
     // The padding brings the size of ProtectedFile to a multiple of the AES block cipher so it can
     // easily be encrpyted and decrypted in place.
@@ -446,75 +437,25 @@ impl Filesystem {
         uuid: [u8; 16],
         flash: &mut impl Flash,
     ) -> Result<(), FsError> {
-        self.write_file_inner(slot, file, uuid, flash, None)
-    }
-
-    /// Write a file to persistent flash storage with boot-relative sub-step logging.
-    pub fn write_file_timed(
-        &mut self,
-        slot: u8,
-        file: &ProtectedFile,
-        uuid: [u8; 16],
-        flash: &mut impl Flash,
-        boot: Instant,
-    ) -> Result<(), FsError> {
-        self.write_file_inner(slot, file, uuid, flash, Some(boot))
-    }
-
-    fn write_file_inner(
-        &mut self,
-        slot: u8,
-        file: &ProtectedFile,
-        uuid: [u8; 16],
-        flash: &mut impl Flash,
-        boot: Option<Instant>,
-    ) -> Result<(), FsError> {
         let idx = Self::validate_slot(slot)?;
-        if let Some(boot) = boot {
-            println!("[+{} ms] write_file inner start", elapsed_ms(boot));
-        }
 
         let length = file.as_bytes().len() as u16;
 
         let flash_addr = FILES_START_ADDR + STORED_FILE_SIZE * (idx as u32);
-        // let length = file_total_size(file.contents.len() as u16);
 
         // Update the cached FAT
         self.fat[idx].uuid = uuid;
         self.fat[idx].flash_addr = flash_addr;
         self.fat[idx].length = length;
-        let fat_start = Instant::now();
         self.store_fat(flash)?;
-        if let Some(boot) = boot {
-            println!(
-                "[+{} ms] write_file store_fat done (step={} ms)",
-                elapsed_ms(boot),
-                elapsed_ms(fat_start)
-            );
-        }
 
         // Only erase the pages needed for the actual data (not all 9)
         let pages_needed = (length as u32).div_ceil(FLASH_PAGE_SIZE);
-        // let pages_needed = (length as u32 + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE;
         for i in 0..pages_needed {
-            let erase_start = Instant::now();
             flash.erase_page(flash_addr + FLASH_PAGE_SIZE * i)?;
         }
 
-        // Write the file to flash
-        // let file_bytes = unsafe {
-        //     core::slice::from_raw_parts(file as *const ProtectedFile as *const u8, length as usize)
-        // };
-        let write_start = Instant::now();
         flash.write(flash_addr, file.as_bytes())?;
-        if let Some(boot) = boot {
-            println!(
-                "[+{} ms] write_file payload write done (step={} ms)",
-                elapsed_ms(boot),
-                elapsed_ms(write_start)
-            );
-            println!("[+{} ms] write_file inner done", elapsed_ms(boot));
-        }
 
         Ok(())
     }
@@ -577,10 +518,4 @@ impl Filesystem {
         let idx = Self::validate_slot(slot)?;
         Ok(&self.fat[idx])
     }
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────
-
-fn elapsed_ms(since: Instant) -> u64 {
-    Instant::now().duration_since(since).as_millis()
 }

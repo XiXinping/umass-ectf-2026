@@ -5,7 +5,6 @@
 //!
 //! Flow control: ACK expected every 256 bytes for non-debug messages.
 
-use defmt::println;
 use embassy_mspm0::mode::Blocking;
 use embassy_mspm0::uart::Uart;
 
@@ -101,6 +100,10 @@ impl<'d> HostUart<'d> {
         let _ = self.uart.blocking_write(&[b]);
     }
 
+    fn write_block(&mut self, block: &[u8]) {
+        let _ = self.uart.blocking_write(block);
+    }
+
     /// Read `len` bytes from UART, sending ACK every 256 bytes.
     fn read_bytes(&mut self, buf: &mut [u8], len: u16) -> MsgStatus {
         for i in 0..len as usize {
@@ -155,32 +158,44 @@ impl<'d> HostUart<'d> {
         total_len: u16,
         should_ack: bool,
     ) -> MsgStatus {
-        let mut bytes_written: usize = 0;
         let limit = total_len as usize;
+        let mut bytes_written: usize = 0;
 
-        // Iterate over the slices seamlessly
+        // Flatten chunks into a seamless byte stream, batching writes
+        // up to the next ACK boundary (every 256 bytes).
         for chunk in chunks.iter() {
-            for &byte in *chunk {
-                // Safety check in case total_len is smaller than the actual chunks provided
-                if bytes_written >= limit {
-                    return MsgStatus::Ok;
-                }
+            let mut offset = 0;
+            while offset < chunk.len() && bytes_written < limit {
+                // How many bytes until the next ACK checkpoint?
+                let next_ack = if should_ack {
+                    256 - (bytes_written % 256)
+                } else {
+                    limit - bytes_written
+                };
 
-                // Check for ACK every 256 bytes (but not at byte 0)
-                if should_ack && bytes_written > 0 && bytes_written % 256 == 0 {
-                    if self.read_ack() != MsgStatus::Ok {
-                        return MsgStatus::NoAck;
-                    }
-                }
+                // Clamp to: remaining in this chunk, remaining overall, next ACK point
+                let remaining_chunk = chunk.len() - offset;
+                let remaining_total = limit - bytes_written;
+                let batch = remaining_chunk.min(remaining_total).min(next_ack);
 
-                self.write_byte(byte);
-                bytes_written += 1;
+                self.write_block(&chunk[offset..offset + batch]);
+                offset += batch;
+                bytes_written += batch;
+
+                // Send ACK at every 256-byte boundary (not at byte 0)
+                if should_ack
+                    && bytes_written > 0
+                    && bytes_written.is_multiple_of(256)
+                    && bytes_written < limit
+                    && self.read_ack() != MsgStatus::Ok
+                {
+                    return MsgStatus::NoAck;
+                }
             }
         }
 
         MsgStatus::Ok
     }
-
     /// Send an ACK message (header only, no payload, no response expected).
     pub fn write_ack(&mut self) -> MsgStatus {
         self.write_packet(MsgType::Ack, &[]);

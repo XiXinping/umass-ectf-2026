@@ -1,6 +1,5 @@
 use crate::secrets;
 use curve25519_dalek::scalar::Scalar;
-use defmt::println;
 use ed25519_dalek::{SigningKey, VerifyingKey, hazmat::ExpandedSecretKey};
 
 /// Pre-computed AES key created by performing Diffie-Hellman key exchange using the public key

@@ -52,26 +52,6 @@ ed25519-dalek = { version = "2.2.0", default-features = false, features = ["hazm
 [dev-dependencies]
 defmt-test = "0.4.0"
 
-[profile.release.package."*"]
-opt-level = 3
-
-[profile.release.package.x25519-dalek]
-opt-level = 3
-
-[profile.release.package.curve25519-dalek]
-opt-level = 3
-
-[profile.release.package.ed25519-dalek]
-opt-level = 3
-
-[profile.release.package.hkdf]
-opt-level = 3
-
-[profile.release.package.chacha20]
-opt-level = 3
-
-[profile.release.package.embassy-mspm0]
-opt-level = 3
 
 [profile.release]
 opt-level = 3
