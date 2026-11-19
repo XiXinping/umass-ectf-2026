@@ -1,5 +1,6 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
-runner = "probe-rs run --restore-unwritten --verify --chip MSPM0L2228 --protocol=swd"
+runner = ["ectf", "flash"]
+# runner = "probe-rs run --restore-unwritten --verify --chip MSPM0L2228 --protocol=swd"
 rustflags = [
 	"-C",
 	"link-arg=-Tlink.x",
@@ -12,6 +13,7 @@ rustflags = [
     "-C",
     "link-arg=-Map=output.map"
 ]
+# runner = "./remote-flash.sh"
 
 [build]
 target = "thumbv6m-none-eabi"
