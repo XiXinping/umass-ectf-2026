@@ -13,7 +13,6 @@ rustflags = [
     "-C",
     "link-arg=-Map=output.map"
 ]
-# runner = "./remote-flash.sh"
 
 [build]
 target = "thumbv6m-none-eabi"
