@@ -2,8 +2,8 @@
 runner = ["ectf", "flash"]
 # runner = "probe-rs run --restore-unwritten --verify --chip MSPM0L2228 --protocol=swd"
 rustflags = [
-	# "-C",
-	# "link-arg=-Tlink.x",
+	"-C",
+	"link-arg=-Tlink.x",
 	"-C",
 	"link-arg=-Tdevice.x",
 	"-C",
