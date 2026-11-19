@@ -2,6 +2,7 @@
 
 ## Build Instructions
 Make sure you have [uv](https://astral.sh/uv) installed.
+Additionally, follow the instructions to setup [HSF-client](https://github.com/NoahW227).
 
 
 In the parent directory, run:
